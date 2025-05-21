@@ -1,0 +1,141 @@
+// MangaReaderAPI/erd.puml
+@startuml ERD
+
+!define PK(name) <b>name</b>
+!define FK(name) <i>name</i>
+!define JOIN_TABLE_COLOR #LightGoldenRodYellow
+!define NORMAL_ENTITY_COLOR #LightGreen
+
+skinparam DefaultFontName Arial
+skinparam DefaultFontSize 12
+skinparam RoundCorner 10
+skinparam Linetype ortho
+skinparam shadowing false
+skinparam classAttributeIconSize 0 ' Ẩn icon mặc định của thuộc tính
+hide empty members
+hide circle
+
+package "Entities" {
+
+  entity Manga #NORMAL_ENTITY_COLOR {
+    + PK(MangaId): Guid
+    --
+    + Title: string
+    + Description: string?
+    + OriginalLanguage: string
+    + PublicationDemographic: PublicationDemographic?
+    + Status: MangaStatus
+    + Year: int?
+    + ContentRating: ContentRating
+    + IsLocked: bool
+  }
+
+  entity Author #NORMAL_ENTITY_COLOR {
+    + PK(AuthorId): Guid
+    --
+    + Name: string
+    + Biography: string?
+  }
+
+  entity Tag #NORMAL_ENTITY_COLOR {
+    + PK(TagId): Guid
+    --
+    + Name: string
+    + Group: string
+  }
+
+  entity Chapter #NORMAL_ENTITY_COLOR {
+    + PK(ChapterId): Guid
+    --
+    + FK(MangaId): Guid
+    + FK(UserId): int  // User upload chapter
+    + Volume: string?
+    + ChapterNumber: string?
+    + Title: string?
+    + TranslatedLanguage: string
+    + Pages: int <<NotMapped>>
+    + ExternalUrl: string?
+    + PublishAt: DateTime
+    + ReadableAt: DateTime
+  }
+
+  entity User #NORMAL_ENTITY_COLOR {
+    + PK(UserId): int
+    --
+    + Username: string (UNIQUE)
+    + Email: string (UNIQUE)
+    + PhotoURL: string?
+  }
+
+  entity ChapterPage #NORMAL_ENTITY_COLOR {
+    + PK(PageId): Guid
+    --
+    + FK(ChapterId): Guid
+    + PageNumber: int
+    + ImageUrl: string
+    + DataSaverUrl: string?
+    + OriginalFileName: string?
+  }
+
+  entity CoverArt #NORMAL_ENTITY_COLOR {
+    + PK(CoverId): Guid
+    --
+    + FK(MangaId): Guid
+    + Volume: string?
+    + FileName: string
+    + Description: string?
+    + Locale: string?
+  }
+
+  entity MangaAuthor #JOIN_TABLE_COLOR {
+    + PK(FK(MangaId)): Guid
+    + PK(FK(AuthorId)): Guid
+    + PK(Role): string
+  }
+
+  entity MangaTag #JOIN_TABLE_COLOR {
+    + PK(FK(MangaId)): Guid
+    + PK(FK(TagId)): Guid
+  }
+
+  entity UserFollowingManga #JOIN_TABLE_COLOR {
+    + PK(FK(UserId)): int
+    + PK(FK(MangaId)): Guid
+    --
+    + FollowedAt: DateTime
+  }
+
+  entity UserReadingHistory #JOIN_TABLE_COLOR {
+    + PK(FK(UserId)): int
+    + PK(FK(MangaId)): Guid
+    --
+    + FK(ChapterId): Guid
+    + LastReadAt: DateTime
+  }
+
+}
+' End of Package
+
+' Relationships
+Manga "1" o-- "0..*" Chapter : Chapters
+Manga "1" o-- "0..*" CoverArt : CoverArts
+
+User "1" o-- "0..*" Chapter : UploadedChapters
+
+Chapter "1" o-- "0..*" ChapterPage : Pages
+
+' Many-to-many relationships through join tables
+Manga "1" -- "0..*" MangaAuthor
+Author "1" -- "0..*" MangaAuthor
+
+Manga "1" -- "0..*" MangaTag
+Tag "1" -- "0..*" MangaTag
+
+' User specific relationships
+User "1" -- "0..*" UserFollowingManga : Following
+Manga "1" -- "0..*" UserFollowingManga : FollowedBy
+
+User "1" -- "0..*" UserReadingHistory : ReadingHistory
+Manga "1" -- "0..*" UserReadingHistory : ReadByUsers
+Chapter "1" -- "0..*" UserReadingHistory : LastReadChapterOf
+@enduml
