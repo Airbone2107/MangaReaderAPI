@@ -1,6 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
-
-namespace Domain.Common
+﻿namespace Domain.Common
 {
     /// <summary>
     /// Lớp cơ sở cho các entity có theo dõi thông tin audit

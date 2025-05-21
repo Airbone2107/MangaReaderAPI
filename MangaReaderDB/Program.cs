@@ -1,9 +1,9 @@
 ﻿// MangaReaderDB/Program.cs
+using Application.Common.Interfaces;
+using Infrastructure.Photos;
 using Microsoft.EntityFrameworkCore;
 using Persistence.Data; 
 using Persistence.Data.Interceptors;
-using Infrastructure.Photos;
-using Application.Common.Interfaces;
 
 var builder = WebApplication.CreateBuilder(args);
 

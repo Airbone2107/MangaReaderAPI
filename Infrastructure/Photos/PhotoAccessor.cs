@@ -2,11 +2,8 @@ using Application.Common.Interfaces;
 using Application.Common.Models;
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.IO;
-using System.Threading.Tasks;
 
 namespace Infrastructure.Photos
 {
