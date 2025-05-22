@@ -36,12 +36,18 @@ namespace Infrastructure.Photos
             }
         }
 
-        public async Task<PhotoUploadResult?> UploadPhotoAsync(Stream stream, string fileName, string? folderName = null)
+        public async Task<PhotoUploadResult?> UploadPhotoAsync(Stream stream, string desiredPublicId, string originalFileNameForUpload, string? folderName = null)
         {
             if (stream == null || stream.Length == 0)
             {
                 _logger.LogWarning("UploadPhotoAsync: Stream is null or empty.");
                 return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(desiredPublicId))
+            {
+                _logger.LogWarning("UploadPhotoAsync: Desired PublicId is null or empty.");
+                return null; // Hoặc throw ArgumentNullException
             }
 
             // Nếu Cloudinary chưa được cấu hình đúng, không thực hiện upload
@@ -53,10 +59,16 @@ namespace Infrastructure.Photos
 
             var uploadParams = new ImageUploadParams
             {
-                File = new FileDescription(fileName, stream),
-                // Có thể thêm các transformation ở đây nếu muốn áp dụng mặc định khi upload
-                // Transformation = new Transformation().Height(500).Width(500).Crop("fill").Gravity("face"),
-                Folder = folderName // Chỉ định thư mục trên Cloudinary
+                File = new FileDescription(originalFileNameForUpload, stream),
+                PublicId = desiredPublicId, // Sử dụng public_id được chỉ định
+                Overwrite = true, // Cho phép ghi đè nếu public_id đã tồn tại (quan trọng)
+                UniqueFilename = false, // Không tự động sinh tên file duy nhất nếu đã cung cấp PublicId
+                Folder = folderName 
+                // Nếu desiredPublicId đã chứa cấu trúc thư mục (ví dụ: "manga_reader/chapters/xxx/pages/yyy")
+                // thì Folder có thể không cần thiết hoặc chỉ định thêm 1 cấp nữa.
+                // Cloudinary sẽ gộp Folder và phần thư mục trong PublicId.
+                // Ví dụ: Folder = "my_app", PublicId = "folder1/image1" -> kết quả là "my_app/folder1/image1"
+                // Ví dụ: Folder = null, PublicId = "folder1/image1" -> kết quả là "folder1/image1"
             };
 
             try
@@ -65,19 +77,20 @@ namespace Infrastructure.Photos
 
                 if (uploadResult.Error != null)
                 {
-                    _logger.LogError(uploadResult.Error.Message, "Cloudinary upload failed for file {FileName}.", fileName);
+                    _logger.LogError("Cloudinary upload failed for file {OriginalFileName} with desired PublicId {DesiredPublicId}. Error: {ErrorMessage}", originalFileNameForUpload, desiredPublicId, uploadResult.Error.Message);
                     return null;
                 }
 
+                // PublicId trả về từ Cloudinary nên giống với desiredPublicId nếu thành công và Overwrite=true
                 return new PhotoUploadResult
                 {
-                    PublicId = uploadResult.PublicId,
-                    Url = uploadResult.SecureUrl.ToString() // Hoặc Url.ToString() nếu bạn không dùng HTTPS
+                    PublicId = uploadResult.PublicId, 
+                    Url = uploadResult.SecureUrl.ToString()
                 };
             }
             catch (System.Exception ex)
             {
-                _logger.LogError(ex, "An exception occurred during Cloudinary upload for file {FileName}.", fileName);
+                _logger.LogError(ex, "An exception occurred during Cloudinary upload for file {OriginalFileName} with desired PublicId {DesiredPublicId}.", originalFileNameForUpload, desiredPublicId);
                 return null;
             }
         }

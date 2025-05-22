@@ -1,5 +1,7 @@
 ﻿// MangaReaderDB/Program.cs
 using Application.Common.Interfaces;
+using FluentValidation;
+using FluentValidation.AspNetCore;
 using Infrastructure.Photos;
 using Microsoft.EntityFrameworkCore;
 using Persistence.Data; 
@@ -24,6 +26,10 @@ builder.Services.Configure<CloudinarySettings>(builder.Configuration.GetSection(
 
 // Đăng ký PhotoAccessor
 builder.Services.AddScoped<IPhotoAccessor, PhotoAccessor>();
+
+// Đăng ký validators từ assembly Application
+builder.Services.AddValidatorsFromAssembly(typeof(Application.AssemblyReference).Assembly, ServiceLifetime.Scoped);
+builder.Services.AddFluentValidationAutoValidation();
 
 // Các services khác của ASP.NET Core
 builder.Services.AddControllers();

@@ -1,4 +1,5 @@
-﻿using Domain.Entities;
+﻿using Application.Common.Interfaces;
+using Domain.Entities;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -8,7 +9,7 @@ namespace Persistence.Data
     /// <summary>
     /// Database context chính của ứng dụng quản lý tất cả các entity
     /// </summary>
-    public class ApplicationDbContext : DbContext
+    public class ApplicationDbContext : DbContext, IApplicationDbContext
     {
         /// <summary>
         /// Khởi tạo một instance mới của ApplicationDbContext
@@ -30,6 +31,10 @@ namespace Persistence.Data
         public DbSet<MangaTag> MangaTags { get; set; } = null!;
         public DbSet<TranslatedManga> TranslatedMangas { get; set; } = null!;
 
+        // Các phương thức SaveChangesAsync, Set<TEntity> đã được cung cấp bởi DbContext
+        // và khớp với yêu cầu của IApplicationDbContext.
+        // ChangeTracker và Database cũng là thuộc tính của DbContext.
+
         /// <summary>
         /// Cấu hình các entity và quan hệ giữa chúng khi tạo database
         /// </summary>
@@ -49,7 +54,6 @@ namespace Persistence.Data
             modelBuilder.Entity<Author>(entity =>
             {
                 entity.HasKey(e => e.AuthorId);
-                // Version đã bị xóa
             });
 
             // --- TagGroup (Mới) ---
@@ -68,10 +72,6 @@ namespace Persistence.Data
             modelBuilder.Entity<Tag>(entity =>
             {
                 entity.HasKey(e => e.TagId);
-                // Thuộc tính Group (string) đã bị loại bỏ khỏi cấu hình này
-                // entity.Property(e => e.Group) // Dòng này không còn nữa
-
-                // Quan hệ với TagGroup đã được cấu hình trong TagGroup entity
             });
 
             // --- Manga ---
@@ -88,9 +88,7 @@ namespace Persistence.Data
                 entity.Property(m => m.PublicationDemographic)
                       .IsRequired(false)
                       .HasConversion(new EnumToStringConverter<PublicationDemographic>());
-                // Version đã bị xóa
 
-                // Quan hệ 1-N với TranslatedManga
                 entity.HasMany(m => m.TranslatedMangas)
                       .WithOne(tm => tm.Manga)
                       .HasForeignKey(tm => tm.MangaId)
@@ -109,19 +107,15 @@ namespace Persistence.Data
             {
                 entity.HasKey(e => e.ChapterId);
 
-                // Quan hệ với TranslatedManga
                 entity.HasOne(c => c.TranslatedManga)
                       .WithMany(tm => tm.Chapters)
                       .HasForeignKey(c => c.TranslatedMangaId)
                       .OnDelete(DeleteBehavior.Cascade);
 
-                // Quan hệ với User (người đăng tải)
                 entity.HasOne(c => c.User)
                       .WithMany(u => u.Chapters)
                       .HasForeignKey(c => c.UploadedByUserId)
                       .OnDelete(DeleteBehavior.Cascade);
-                
-                // ExternalUrl đã bị loại bỏ, không cần cấu hình
             });
 
             // --- ChapterPage ---
