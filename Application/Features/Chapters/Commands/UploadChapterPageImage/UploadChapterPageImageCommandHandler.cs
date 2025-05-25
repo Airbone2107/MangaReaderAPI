@@ -3,7 +3,6 @@ using Application.Contracts.Persistence;
 using Application.Exceptions;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using System.IO; // Cho Path.GetExtension
 
 namespace Application.Features.Chapters.Commands.UploadChapterPageImage
 {

@@ -65,9 +65,9 @@ Dưới đây là danh sách các công việc chính cần thực hiện để 
     *   ✅ Cấu trúc thư mục và files đã được tạo cho Validators (ví dụ: `CreateMangaCommandValidator.cs`), cần định nghĩa nội dung.
 4.  **Triển khai Commands và Queries (CQRS với MediatR):** (`Application/Features/`)
     *   **Commands & Command Handlers:**
-        *   🔄 Cấu trúc thư mục và files đã được tạo cho Commands và Handlers (ví dụ: `CreateMangaCommand.cs`, `CreateMangaCommandHandler.cs`), cần định nghĩa nội dung.
+        *   ✅ Cấu trúc thư mục và files đã được tạo cho Commands và Handlers (ví dụ: `CreateMangaCommand.cs`, `CreateMangaCommandHandler.cs`), cần định nghĩa nội dung.
     *   **Queries & Query Handlers:**
-        *   🔄 Cấu trúc thư mục và files đã được tạo cho Queries và Handlers (ví dụ: `GetMangaByIdQuery.cs`, `GetMangaByIdQueryHandler.cs`), cần định nghĩa nội dung.
+        *   ✅ Cấu trúc thư mục và files đã được tạo cho Queries và Handlers (ví dụ: `GetMangaByIdQuery.cs`, `GetMangaByIdQueryHandler.cs`), cần định nghĩa nội dung.
 5.  **Models:**
     *   ✅ `PhotoUploadResult.cs` (Đã có và có nội dung hoàn chỉnh)
 

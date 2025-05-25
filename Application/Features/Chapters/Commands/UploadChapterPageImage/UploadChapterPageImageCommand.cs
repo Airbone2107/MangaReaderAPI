@@ -1,5 +1,4 @@
 using MediatR;
-using System.IO; // Cho Stream
 
 namespace Application.Features.Chapters.Commands.UploadChapterPageImage
 {
