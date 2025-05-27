@@ -8,8 +8,8 @@ namespace Application.Features.TranslatedMangas.Queries.GetTranslatedMangasByMan
     public class GetTranslatedMangasByMangaQuery : IRequest<PagedResult<TranslatedMangaDto>>
     {
         public Guid MangaId { get; set; }
-        public int PageNumber { get; set; } = 1;
-        public int PageSize { get; set; } = 10;
+        public int Offset { get; set; } = 0;
+        public int Limit { get; set; } = 20;
         // Thêm OrderBy nếu cần (ví dụ: LanguageKey, Title)
         public string OrderBy { get; set; } = "LanguageKey"; 
         public bool Ascending { get; set; } = true;

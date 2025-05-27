@@ -3,6 +3,7 @@ using Application.Common.Interfaces;
 using Application.Contracts.Persistence; // Thêm using cho IUnitOfWork và các IRepository
 using FluentValidation;
 using Infrastructure.Photos;
+using MangaReaderDB.Middleware; // Thêm using cho Middleware
 using Microsoft.EntityFrameworkCore;
 using Persistence.Data;
 using Persistence.Data.Interceptors;
@@ -55,6 +56,9 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+// Đăng ký ExceptionMiddleware ở đầu pipeline
+app.UseMiddleware<ExceptionMiddleware>();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

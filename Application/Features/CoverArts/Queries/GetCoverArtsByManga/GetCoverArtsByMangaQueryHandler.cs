@@ -31,7 +31,7 @@ namespace Application.Features.CoverArts.Queries.GetCoverArtsByManga
             if (!mangaExists)
             {
                 _logger.LogWarning("Không tìm thấy Manga với ID: {MangaId} khi lấy cover arts.", request.MangaId);
-                return new PagedResult<CoverArtDto>(new List<CoverArtDto>(), 0, request.PageNumber, request.PageSize);
+                return new PagedResult<CoverArtDto>(new List<CoverArtDto>(), 0, request.Offset, request.Limit);
             }
 
             // Build filter predicate
@@ -43,14 +43,14 @@ namespace Application.Features.CoverArts.Queries.GetCoverArtsByManga
             // TODO: [Improvement] Thêm sắp xếp theo Volume
 
             var pagedCoverArts = await _unitOfWork.CoverArtRepository.GetPagedAsync(
-                request.PageNumber,
-                request.PageSize,
+                request.Offset,
+                request.Limit,
                 filter,
                 orderBy
             );
 
             var coverArtDtos = _mapper.Map<List<CoverArtDto>>(pagedCoverArts.Items);
-            return new PagedResult<CoverArtDto>(coverArtDtos, pagedCoverArts.TotalCount, request.PageNumber, request.PageSize);
+            return new PagedResult<CoverArtDto>(coverArtDtos, pagedCoverArts.Total, request.Offset, request.Limit);
         }
     }
 } 

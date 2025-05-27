@@ -27,7 +27,7 @@ namespace Persistence.Repositories
             return await _dbSet.AsNoTracking().ToListAsync();
         }
 
-        public virtual async Task<PagedResult<T>> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<T, bool>>? filter = null, Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null, string? includeProperties = null)
+        public virtual async Task<PagedResult<T>> GetPagedAsync(int offset, int limit, Expression<Func<T, bool>>? filter = null, Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null, string? includeProperties = null)
         {
             IQueryable<T> query = _dbSet;
 
@@ -51,12 +51,12 @@ namespace Persistence.Repositories
                 query = orderBy(query);
             }
             
-            var items = await query.Skip((pageNumber - 1) * pageSize)
-                                   .Take(pageSize)
+            var items = await query.Skip(offset)
+                                   .Take(limit)
                                    .AsNoTracking()
                                    .ToListAsync();
 
-            return new PagedResult<T>(items, totalCount, pageNumber, pageSize);
+            return new PagedResult<T>(items, totalCount, offset, limit);
         }
 
         public virtual async Task AddAsync(T entity)

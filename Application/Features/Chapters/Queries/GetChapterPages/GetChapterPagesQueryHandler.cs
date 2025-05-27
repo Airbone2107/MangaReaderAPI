@@ -24,31 +24,31 @@ namespace Application.Features.Chapters.Queries.GetChapterPages
 
         public async Task<PagedResult<ChapterPageDto>> Handle(GetChapterPagesQuery request, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("GetChapterPagesQueryHandler.Handle - Lấy các trang cho ChapterId: {ChapterId}, PageNumber: {PageNumber}, PageSize: {PageSize}",
-                request.ChapterId, request.PageNumber, request.PageSize);
+            _logger.LogInformation("GetChapterPagesQueryHandler.Handle - Lấy các trang cho ChapterId: {ChapterId}, Offset: {Offset}, Limit: {Limit}",
+                request.ChapterId, request.Offset, request.Limit);
 
             // Kiểm tra sự tồn tại của Chapter
             var chapterExists = await _unitOfWork.ChapterRepository.ExistsAsync(request.ChapterId);
             if (!chapterExists)
             {
                 _logger.LogWarning("Không tìm thấy Chapter với ID: {ChapterId} khi lấy danh sách trang.", request.ChapterId);
-                return new PagedResult<ChapterPageDto>(new List<ChapterPageDto>(), 0, request.PageNumber, request.PageSize);
+                return new PagedResult<ChapterPageDto>(new List<ChapterPageDto>(), 0, request.Offset, request.Limit);
             }
             
             // TODO: [Improvement] Hiện tại, IChapterRepository không có phương thức GetPagedAsync cho ChapterPage.
             // Phương thức GetPagedAsync trong GenericRepository hoạt động trên DbSet<T>.
             // Để lấy ChapterPage có phân trang hiệu quả từ DB, bạn nên:
             // 1. Thêm phương thức vào IChapterRepository:
-            //    Task<PagedResult<ChapterPage>> GetPagedPagesByChapterAsync(Guid chapterId, int pageNumber, int pageSize);
+            //    Task<PagedResult<ChapterPage>> GetPagedPagesByChapterAsync(Guid chapterId, int offset, int limit);
             // 2. Triển khai phương thức đó trong ChapterRepository sử dụng _context.ChapterPages.GetPagedAsync(...) (cần access DbSet ChapterPages)
             //    (Để làm điều này, bạn có thể cần chỉnh sửa GenericRepository hoặc ChapterRepository để truy cập _context hoặc DbSet<ChapterPage>).
             //    Ví dụ triển khai trong ChapterRepository:
-            //    public async Task<PagedResult<ChapterPage>> GetPagedPagesByChapterAsync(Guid chapterId, int pageNumber, int pageSize)
+            //    public async Task<PagedResult<ChapterPage>> GetPagedPagesByChapterAsync(Guid chapterId, int offset, int limit)
             //    {
             //        var query = _context.ChapterPages.Where(cp => cp.ChapterId == chapterId).OrderBy(cp => cp.PageNumber);
             //        var totalCount = await query.CountAsync();
-            //        var items = await query.Skip((pageNumber - 1) * pageSize).Take(pageSize).AsNoTracking().ToListAsync();
-            //        return new PagedResult<ChapterPage>(items, totalCount, pageNumber, pageSize);
+            //        var items = await query.Skip(offset).Take(limit).AsNoTracking().ToListAsync();
+            //        return new PagedResult<ChapterPage>(items, totalCount, offset, limit);
             //    }
             // 3. Sau đó, gọi phương thức mới đó ở đây.
 
@@ -58,19 +58,19 @@ namespace Application.Features.Chapters.Queries.GetChapterPages
             if (chapterWithPages == null || chapterWithPages.ChapterPages == null)
             {
                  _logger.LogWarning("Chapter with ID {ChapterId} found but has no pages.", request.ChapterId);
-                 return new PagedResult<ChapterPageDto>(new List<ChapterPageDto>(), 0, request.PageNumber, request.PageSize);
+                 return new PagedResult<ChapterPageDto>(new List<ChapterPageDto>(), 0, request.Offset, request.Limit);
             }
 
             var allPages = chapterWithPages.ChapterPages.OrderBy(p => p.PageNumber).ToList(); // Lấy tất cả trang và sắp xếp
             var totalCount = allPages.Count;
             
             // Phân trang trong bộ nhớ
-            var items = allPages.Skip((request.PageNumber - 1) * request.PageSize)
-                                .Take(request.PageSize)
+            var items = allPages.Skip(request.Offset)
+                                .Take(request.Limit)
                                 .ToList();
 
             var pageDtos = _mapper.Map<List<ChapterPageDto>>(items);
-            return new PagedResult<ChapterPageDto>(pageDtos, totalCount, request.PageNumber, request.PageSize);
+            return new PagedResult<ChapterPageDto>(pageDtos, totalCount, request.Offset, request.Limit);
         }
     }
 } 

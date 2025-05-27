@@ -1,5 +1,7 @@
 using Application.Common.DTOs;
 using Application.Common.DTOs.Mangas;
+using Application.Common.Responses;
+using Application.Exceptions;
 using Application.Features.Mangas.Commands.AddMangaAuthor;
 using Application.Features.Mangas.Commands.AddMangaTag;
 using Application.Features.Mangas.Commands.CreateManga;
@@ -14,6 +16,7 @@ using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using System.Linq; // Required for .Select on validationResult.Errors
+using Microsoft.Extensions.Logging; // Đảm bảo có using này
 
 namespace MangaReaderDB.Controllers
 {
@@ -21,30 +24,31 @@ namespace MangaReaderDB.Controllers
     {
         private readonly IValidator<CreateMangaDto> _createMangaDtoValidator;
         private readonly IValidator<UpdateMangaDto> _updateMangaDtoValidator;
+        private readonly ILogger<MangasController> _logger; // Thêm logger
         // Nếu MangaTagInputDto và MangaAuthorInputDto có validator riêng, bạn cũng cần inject chúng.
         // Hiện tại, chúng khá đơn giản và có thể validate trực tiếp trong action nếu cần.
 
         public MangasController(
             IValidator<CreateMangaDto> createMangaDtoValidator,
-            IValidator<UpdateMangaDto> updateMangaDtoValidator)
+            IValidator<UpdateMangaDto> updateMangaDtoValidator,
+            ILogger<MangasController> logger) // Inject logger
         {
             _createMangaDtoValidator = createMangaDtoValidator;
             _updateMangaDtoValidator = updateMangaDtoValidator;
+            _logger = logger; // Gán logger
         }
 
         [HttpPost]
-        [ProducesResponseType(typeof(Guid), StatusCodes.Status201Created)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiResponse<MangaDto>), StatusCodes.Status201Created)] // Sửa ProducesResponseType
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> CreateManga([FromBody] CreateMangaDto createDto)
         {
             var validationResult = await _createMangaDtoValidator.ValidateAsync(createDto);
             if (!validationResult.IsValid)
             {
-                var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
+                throw new Application.Exceptions.ValidationException(validationResult.Errors);
             }
 
-            // Map CreateMangaDto to CreateMangaCommand
             var command = new CreateMangaCommand
             {
                 Title = createDto.Title,
@@ -55,22 +59,33 @@ namespace MangaReaderDB.Controllers
                 ContentRating = createDto.ContentRating
             };
             var id = await Mediator.Send(command);
-            return CreatedAtAction(nameof(GetMangaById), new { id }, new { MangaId = id });
+            var mangaDto = await Mediator.Send(new GetMangaByIdQuery { MangaId = id });
+
+            if (mangaDto == null)
+            {
+                 _logger.LogError($"FATAL: Manga with ID {id} was not found after creation! This indicates a critical issue.");
+                 throw new InvalidOperationException($"Could not retrieve Manga with ID {id} after creation. This is an unexpected error.");
+            }
+            return Created(nameof(GetMangaById), new { id }, mangaDto);
         }
 
         [HttpGet("{id:guid}")]
-        [ProducesResponseType(typeof(MangaDto), StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<ActionResult<MangaDto>> GetMangaById(Guid id)
+        [ProducesResponseType(typeof(ApiResponse<MangaDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetMangaById(Guid id)
         {
             var query = new GetMangaByIdQuery { MangaId = id };
             var result = await Mediator.Send(query);
-            return result == null ? NotFound() : Ok(result);
+            if (result == null)
+            {
+                throw new NotFoundException(nameof(Domain.Entities.Manga), id);
+            }
+            return Ok(result);
         }
 
         [HttpGet]
-        [ProducesResponseType(typeof(PagedResult<MangaDto>), StatusCodes.Status200OK)]
-        public async Task<ActionResult<PagedResult<MangaDto>>> GetMangas([FromQuery] GetMangasQuery query)
+        [ProducesResponseType(typeof(ApiCollectionResponse<MangaDto>), StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetMangas([FromQuery] GetMangasQuery query)
         {
             var result = await Mediator.Send(query);
             return Ok(result);
@@ -78,15 +93,14 @@ namespace MangaReaderDB.Controllers
 
         [HttpPut("{id:guid}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateManga(Guid id, [FromBody] UpdateMangaDto updateDto)
         {
             var validationResult = await _updateMangaDtoValidator.ValidateAsync(updateDto);
             if (!validationResult.IsValid)
             {
-                var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
+                throw new Application.Exceptions.ValidationException(validationResult.Errors);
             }
 
             var command = new UpdateMangaCommand
@@ -106,7 +120,7 @@ namespace MangaReaderDB.Controllers
 
         [HttpDelete("{id:guid}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteManga(Guid id)
         {
             var command = new DeleteMangaCommand { MangaId = id };
@@ -117,25 +131,27 @@ namespace MangaReaderDB.Controllers
         // --- Manga Tags ---
         [HttpPost("{mangaId:guid}/tags")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> AddMangaTag(Guid mangaId, [FromBody] MangaTagInputDto input)
         {
             if (input.TagId == Guid.Empty) 
             {
-                return BadRequest(new { Title = "Validation Failed", Errors = new[] { new { PropertyName = nameof(input.TagId), ErrorMessage = "TagId is required." } } });
+                throw new Application.Exceptions.ValidationException(nameof(input.TagId), "TagId is required.");
             }
             var command = new AddMangaTagCommand { MangaId = mangaId, TagId = input.TagId };
+            // Handler sẽ throw NotFoundException nếu mangaId hoặc tagId không tồn tại
             await Mediator.Send(command);
             return NoContent();
         }
 
         [HttpDelete("{mangaId:guid}/tags/{tagId:guid}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> RemoveMangaTag(Guid mangaId, Guid tagId)
         {
             var command = new RemoveMangaTagCommand { MangaId = mangaId, TagId = tagId };
+            // Handler sẽ throw NotFoundException nếu mangaId hoặc tagId không tồn tại, hoặc tag không được gán cho manga
             await Mediator.Send(command);
             return NoContent();
         }
@@ -143,18 +159,17 @@ namespace MangaReaderDB.Controllers
         // --- Manga Authors ---
         [HttpPost("{mangaId:guid}/authors")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> AddMangaAuthor(Guid mangaId, [FromBody] MangaAuthorInputDto input)
         {
             if (input.AuthorId == Guid.Empty)
             {
-                 return BadRequest(new { Title = "Validation Failed", Errors = new[] { new { PropertyName = nameof(input.AuthorId), ErrorMessage = "AuthorId is required." } } });
+                 throw new Application.Exceptions.ValidationException(nameof(input.AuthorId), "AuthorId is required.");
             }
-            // Validate Role enum if necessary
             if (!Enum.IsDefined(typeof(MangaStaffRole), input.Role))
             {
-                return BadRequest(new { Title = "Validation Failed", Errors = new[] { new { PropertyName = nameof(input.Role), ErrorMessage = "Invalid Role." } } });
+                throw new Application.Exceptions.ValidationException(nameof(input.Role), "Invalid Role.");
             }
             var command = new AddMangaAuthorCommand { MangaId = mangaId, AuthorId = input.AuthorId, Role = input.Role };
             await Mediator.Send(command);
@@ -163,7 +178,7 @@ namespace MangaReaderDB.Controllers
 
         [HttpDelete("{mangaId:guid}/authors/{authorId:guid}/role/{role}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> RemoveMangaAuthor(Guid mangaId, Guid authorId, MangaStaffRole role)
         {
             var command = new RemoveMangaAuthorCommand { MangaId = mangaId, AuthorId = authorId, Role = role };

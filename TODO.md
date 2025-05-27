@@ -1,676 +1,530 @@
-### Bước 2: Cập nhật các API Controllers để thực hiện validation thủ công
+Mục tiêu: Chuyển đổi cấu trúc DTO trả về của API sang định dạng `ResourceObject` với `id`, `type`, `attributes`, và `relationships` để tăng tính nhất quán và tuân theo các chuẩn API hiện đại.
 
-Bây giờ, bạn cần cập nhật các action trong Controller (thường là `POST` và `PUT` nhận DTO từ request body) để gọi validator một cách tường minh.
+## I. Tạo Các DTO Cơ Sở và DTO Attributes
 
-Các validator cho DTOs (ví dụ: `CreateAuthorDtoValidator`) đã được bạn định nghĩa trong thư mục `Application/Validation/` và đã được inject vào các controllers tương ứng. Chúng ta chỉ cần thêm logic gọi validate.
-
-#### 2.1. Cập nhật `AuthorsController.cs`
-
-```csharp
-// MangaReaderDB/Controllers/AuthorsController.cs
-using Application.Common.DTOs;
-using Application.Common.DTOs.Authors;
-using Application.Features.Authors.Commands.CreateAuthor;
-using Application.Features.Authors.Commands.DeleteAuthor;
-using Application.Features.Authors.Commands.UpdateAuthor;
-using Application.Features.Authors.Queries.GetAuthorById;
-using Application.Features.Authors.Queries.GetAuthors;
-using FluentValidation;
-using MediatR; // For Unit
-using Microsoft.AspNetCore.Mvc;
-using System.Linq; // Required for .Select on validationResult.Errors
-
-namespace MangaReaderDB.Controllers
-{
-    public class AuthorsController : BaseApiController
-    {
-        private readonly IValidator<CreateAuthorDto> _createAuthorDtoValidator;
-        private readonly IValidator<UpdateAuthorDto> _updateAuthorDtoValidator;
-
-        public AuthorsController(
-            IValidator<CreateAuthorDto> createAuthorDtoValidator,
-            IValidator<UpdateAuthorDto> updateAuthorDtoValidator)
+1.  **Tạo DTO `ResourceObject<TAttributes>`:**
+    *   **File:** `Application/Common/Models/ResourceObject.cs`
+    *   **Nội dung:**
+        ```csharp
+        // Application/Common/Models/ResourceObject.cs
+        namespace Application.Common.Models
         {
-            _createAuthorDtoValidator = createAuthorDtoValidator;
-            _updateAuthorDtoValidator = updateAuthorDtoValidator;
-        }
-
-        [HttpPost]
-        [ProducesResponseType(typeof(Guid), StatusCodes.Status201Created)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> CreateAuthor([FromBody] CreateAuthorDto createAuthorDto)
-        {
-            var validationResult = await _createAuthorDtoValidator.ValidateAsync(createAuthorDto);
-            if (!validationResult.IsValid)
+            public class ResourceObject<TAttributes>
             {
-                // Trả về lỗi validation dưới dạng một đối tượng dễ xử lý ở client
-                var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
+                /// <summary>
+                /// Định danh duy nhất của tài nguyên (dưới dạng chuỗi GUID).
+                /// </summary>
+                public string Id { get; set; } = string.Empty;
+
+                /// <summary>
+                /// Loại của tài nguyên chính, ví dụ: "manga", "author", "tag".
+                /// Sử dụng snake_case và số ít.
+                /// </summary>
+                public string Type { get; set; } = string.Empty;
+
+                /// <summary>
+                /// Các thuộc tính riêng của tài nguyên.
+                /// </summary>
+                public TAttributes Attributes { get; set; } = default!;
+
+                /// <summary>
+                /// Danh sách các mối quan hệ với các tài nguyên khác.
+                /// </summary>
+                public List<RelationshipObject> Relationships { get; set; } = new List<RelationshipObject>();
+            }
+        }
+        ```
+
+2.  **Tạo DTO `RelationshipObject`:**
+    *   **File:** `Application/Common/Models/RelationshipObject.cs`
+    *   **Nội dung:**
+        ```csharp
+        // Application/Common/Models/RelationshipObject.cs
+        namespace Application.Common.Models
+        {
+            public class RelationshipObject
+            {
+                /// <summary>
+                /// Định danh duy nhất của tài nguyên liên quan (dưới dạng chuỗi GUID).
+                /// </summary>
+                public string Id { get; set; } = string.Empty;
+
+                /// <summary>
+                /// Loại của mối quan hệ hoặc vai trò của tài nguyên liên quan đối với tài nguyên gốc.
+                /// Ví dụ: "author", "artist", "cover_art", "tag", "user", "manga".
+                /// Sử dụng snake_case và số ít.
+                /// </summary>
+                public string Type { get; set; } = string.Empty;
+            }
+        }
+        ```
+
+3.  **Tạo các DTO `...AttributesDto.cs` cho mỗi Entity:**
+    *   Mục tiêu: Tách các thuộc tính dữ liệu thuần túy (không bao gồm ID và các navigation properties) của các DTO hiện tại (`MangaDto`, `AuthorDto`,...) vào các DTO attributes mới.
+    *   **Danh sách các file Attributes DTO cần tạo/kiểm tra:**
+        *   `Application/Common/DTOs/Authors/AuthorAttributesDto.cs`:
+            ```csharp
+            // Application/Common/DTOs/Authors/AuthorAttributesDto.cs
+            namespace Application.Common.DTOs.Authors
+            {
+                public class AuthorAttributesDto
+                {
+                    public string Name { get; set; } = string.Empty;
+                    public string? Biography { get; set; }
+                    public DateTime CreatedAt { get; set; }
+                    public DateTime UpdatedAt { get; set; }
+                    // Các thuộc tính khác của Author (trừ Id và relationships) nếu có
+                }
+            }
+            ```
+        *   `Application/Common/DTOs/Mangas/MangaAttributesDto.cs`:
+            ```csharp
+            // Application/Common/DTOs/Mangas/MangaAttributesDto.cs
+            using Domain.Enums;
+
+            namespace Application.Common.DTOs.Mangas
+            {
+                public class MangaAttributesDto
+                {
+                    public string Title { get; set; } = string.Empty;
+                    public string OriginalLanguage { get; set; } = string.Empty;
+                    public PublicationDemographic? PublicationDemographic { get; set; }
+                    public MangaStatus Status { get; set; }
+                    public int? Year { get; set; }
+                    public ContentRating ContentRating { get; set; }
+                    public bool IsLocked { get; set; }
+                    public DateTime CreatedAt { get; set; }
+                    public DateTime UpdatedAt { get; set; }
+                    // Các thuộc tính khác của Manga (trừ Id và relationships) nếu có
+                }
+            }
+            ```
+        *   `Application/Common/DTOs/Tags/TagAttributesDto.cs`:
+            ```csharp
+            // Application/Common/DTOs/Tags/TagAttributesDto.cs
+            namespace Application.Common.DTOs.Tags
+            {
+                public class TagAttributesDto
+                {
+                    public string Name { get; set; } = string.Empty;
+                    public DateTime CreatedAt { get; set; }
+                    public DateTime UpdatedAt { get; set; }
+                    // TagGroupId và TagGroupName sẽ là relationship đến 'tag_group'.
+                }
+            }
+            ```
+        *   `Application/Common/DTOs/TagGroups/TagGroupAttributesDto.cs`:
+            ```csharp
+            // Application/Common/DTOs/TagGroups/TagGroupAttributesDto.cs
+            namespace Application.Common.DTOs.TagGroups
+            {
+                public class TagGroupAttributesDto
+                {
+                    public string Name { get; set; } = string.Empty;
+                    public DateTime CreatedAt { get; set; }
+                    public DateTime UpdatedAt { get; set; }
+                }
+            }
+            ```
+        *   `Application/Common/DTOs/Chapters/ChapterAttributesDto.cs`:
+            ```csharp
+            // Application/Common/DTOs/Chapters/ChapterAttributesDto.cs
+            namespace Application.Common.DTOs.Chapters
+            {
+                public class ChapterAttributesDto
+                {
+                    public string? Volume { get; set; }
+                    public string? ChapterNumber { get; set; }
+                    public string? Title { get; set; }
+                    public int PagesCount { get; set; } 
+                    public DateTime PublishAt { get; set; }
+                    public DateTime ReadableAt { get; set; }
+                    public DateTime CreatedAt { get; set; }
+                    public DateTime UpdatedAt { get; set; }
+                    // Uploader (User), TranslatedManga, và ChapterPages sẽ là relationships hoặc endpoint riêng.
+                }
+            }
+            ```
+        *   `Application/Common/DTOs/CoverArts/CoverArtAttributesDto.cs`:
+            ```csharp
+            // Application/Common/DTOs/CoverArts/CoverArtAttributesDto.cs
+            namespace Application.Common.DTOs.CoverArts
+            {
+                public class CoverArtAttributesDto
+                {
+                    public string? Volume { get; set; }
+                    public string PublicId { get; set; } = string.Empty; 
+                    public string? Description { get; set; }
+                    public DateTime CreatedAt { get; set; }
+                    public DateTime UpdatedAt { get; set; }
+                    // MangaId sẽ là một relationship.
+                }
+            }
+            ```
+        *   `Application/Common/DTOs/Users/UserAttributesDto.cs`:
+            ```csharp
+            // Application/Common/DTOs/Users/UserAttributesDto.cs
+            namespace Application.Common.DTOs.Users
+            {
+                public class UserAttributesDto
+                {
+                    public string Username { get; set; } = string.Empty;
+                    // Thêm các thuộc tính khác của User nếu có (ví dụ: roles, version,...)
+                }
+            }
+            ```
+        *   `Application/Common/DTOs/TranslatedMangas/TranslatedMangaAttributesDto.cs`:
+            ```csharp
+            // Application/Common/DTOs/TranslatedMangas/TranslatedMangaAttributesDto.cs
+            namespace Application.Common.DTOs.TranslatedMangas
+            {
+                public class TranslatedMangaAttributesDto
+                {
+                    public string LanguageKey { get; set; } = string.Empty;
+                    public string Title { get; set; } = string.Empty;
+                    public string? Description { get; set; }
+                    public DateTime CreatedAt { get; set; }
+                    public DateTime UpdatedAt { get; set; }
+                    // MangaId sẽ là một relationship.
+                }
+            }
+            ```
+        *   **`ChapterPageAttributesDto`**: Hiện tại không cần thiết nếu `ChapterPage` không phải là một resource độc lập được trả về qua API theo cấu trúc `ResourceObject`. `ChapterAttributesDto` có `PagesCount` và danh sách các trang có thể được lấy qua một endpoint riêng (ví dụ: `/chapters/{id}/pages` hoặc `/at-home/server/{chapterId}` như Mangadex).
+
+## II. Cập Nhật Tầng Application
+
+1.  **Cập Nhật `MappingProfile.cs`:**
+    *   **File:** `Application/Common/Mappings/MappingProfile.cs`
+    *   **Công việc:**
+        *   Với mỗi Entity (ví dụ: `Domain.Entities.Author`), tạo mapping sang `AuthorAttributesDto` tương ứng.
+            ```csharp
+            // Application/Common/Mappings/MappingProfile.cs
+            // ...
+            public class MappingProfile : Profile
+            {
+                public MappingProfile()
+                {
+                    // User
+                    CreateMap<Domain.Entities.User, UserAttributesDto>();
+                    // Nếu UserDto cũ vẫn dùng nội bộ, giữ lại: CreateMap<User, UserDto>();
+
+                    // Author
+                    CreateMap<Domain.Entities.Author, AuthorAttributesDto>();
+                    // Giữ lại các mapping DTO -> Entity và Command -> Entity nếu cần
+                    CreateMap<CreateAuthorDto, Domain.Entities.Author>(); 
+                    CreateMap<UpdateAuthorDto, Domain.Entities.Author>(); 
+                    CreateMap<CreateAuthorCommand, Domain.Entities.Author>();
+
+                    // TagGroup
+                    CreateMap<Domain.Entities.TagGroup, TagGroupAttributesDto>();
+                    CreateMap<CreateTagGroupDto, Domain.Entities.TagGroup>();
+                    CreateMap<UpdateTagGroupDto, Domain.Entities.TagGroup>();
+                    CreateMap<CreateTagGroupCommand, Domain.Entities.TagGroup>();
+
+                    // Tag
+                    CreateMap<Domain.Entities.Tag, TagAttributesDto>();
+                    // Mapping Tag -> TagDto cũ có thể không cần nữa nếu TagDto không còn dùng cho response
+                    // CreateMap<Tag, TagDto>()
+                    //    .ForMember(dest => dest.TagGroupName, opt => opt.MapFrom(src => src.TagGroup != null ? src.TagGroup.Name : string.Empty));
+                    CreateMap<CreateTagDto, Domain.Entities.Tag>();
+                    CreateMap<UpdateTagDto, Domain.Entities.Tag>();
+                    CreateMap<CreateTagCommand, Domain.Entities.Tag>();
+
+                    // Manga
+                    CreateMap<Domain.Entities.Manga, MangaAttributesDto>();
+                    // Mapping Manga -> MangaDto cũ có thể không cần nữa
+                    CreateMap<CreateMangaDto, Domain.Entities.Manga>(); 
+                    CreateMap<UpdateMangaDto, Domain.Entities.Manga>(); 
+                    CreateMap<CreateMangaCommand, Domain.Entities.Manga>(); 
+
+                    // TranslatedManga
+                    CreateMap<Domain.Entities.TranslatedManga, TranslatedMangaAttributesDto>();
+                    CreateMap<CreateTranslatedMangaDto, Domain.Entities.TranslatedManga>();
+                    CreateMap<UpdateTranslatedMangaDto, Domain.Entities.TranslatedManga>();
+                    CreateMap<CreateTranslatedMangaCommand, Domain.Entities.TranslatedManga>();
+
+                    // CoverArt
+                    CreateMap<Domain.Entities.CoverArt, CoverArtAttributesDto>();
+                    CreateMap<CreateCoverArtDto, Domain.Entities.CoverArt>(); 
+
+                    // ChapterPage: Không có attributes DTO riêng, ChapterPageDto cũ có thể vẫn dùng
+                    CreateMap<Domain.Entities.ChapterPage, ChapterPageDto>();
+                    CreateMap<CreateChapterPageDto, Domain.Entities.ChapterPage>(); 
+                    CreateMap<UpdateChapterPageDto, Domain.Entities.ChapterPage>();
+
+                    // Chapter
+                    CreateMap<Domain.Entities.Chapter, ChapterAttributesDto>()
+                        .ForMember(dest => dest.PagesCount, opt => opt.MapFrom(src => src.ChapterPages.Count));
+                    // Mapping Chapter -> ChapterDto cũ có thể không cần nữa
+                    // CreateMap<Chapter, ChapterDto>()
+                    //     .ForMember(dest => dest.Uploader, opt => opt.MapFrom(src => src.User)) // Cần User -> UserDto
+                    //     .ForMember(dest => dest.PagesCount, opt => opt.MapFrom(src => src.ChapterPages.Count))
+                    //     .ForMember(dest => dest.ChapterPages, opt => opt.MapFrom(src => src.ChapterPages.OrderBy(p => p.PageNumber))); // Cần ChapterPage -> ChapterPageDto
+                    CreateMap<CreateChapterDto, Domain.Entities.Chapter>();
+                    CreateMap<UpdateChapterDto, Domain.Entities.Chapter>();
+                    CreateMap<CreateChapterCommand, Domain.Entities.Chapter>();
+                }
+            }
+            ```
+        *   **Lưu ý:** AutoMapper sẽ không tự động map sang `ResourceObject<TAttributes>` hoặc `RelationshipObject`. Việc này sẽ được thực hiện thủ công trong các Query Handlers.
+
+2.  **Cập Nhật Các Query Handlers:**
+    *   **Tệp cần cập nhật:** Tất cả các file `*QueryHandler.cs` trong thư mục `Application/Features/`.
+    *   **Công việc chung cho mỗi Handler:**
+        1.  Truy vấn Entity từ repository, đảm bảo Eager Loading các navigation properties cần thiết để xây dựng `relationships`.
+        2.  Nếu Entity không tìm thấy, trả về `null` (Controller sẽ xử lý thành 404).
+        3.  Xác định chuỗi `type` cho resource chính (ví dụ: `"manga"`, `"author"`, `Entity.GetType().Name.ToLowerInvariant()` có thể là một khởi đầu, nhưng cần chuẩn hóa thành snake_case nếu cần và theo quy ước của Mangadex API).
+        4.  Map Entity sang `...AttributesDto` tương ứng bằng AutoMapper.
+        5.  **Xây dựng `List<RelationshipObject>`:**
+            *   Duyệt qua các navigation properties của Entity đã được Eager Load.
+            *   Với mỗi entity liên quan, tạo một `RelationshipObject`.
+            *   `relationship.Id = relatedEntity.Id.ToString();`
+            *   `relationship.Type = "...";` (Xác định `type` dựa trên ngữ cảnh và vai trò của mối quan hệ. Xem ví dụ dưới đây và tham khảo `api.yaml` của Mangadex).
+        6.  Tạo instance `ResourceObject<TAttributesDto>` và gán các giá trị `Id` (của entity chính, dạng chuỗi), `Type`, `Attributes`, và `Relationships`.
+        7.  Trả về `ResourceObject<TAttributesDto>`.
+        8.  Đối với Handler trả về danh sách (ví dụ: `GetMangasQueryHandler`):
+            *   Lặp qua danh sách Entities, thực hiện các bước trên cho mỗi Entity.
+            *   Tạo `PagedResult<ResourceObject<TAttributesDto>>` để trả về.
+
+    *   **Ví dụ cụ thể cho `GetMangaByIdQueryHandler.cs`:**
+        ```csharp
+        // Application/Features/Mangas/Queries/GetMangaById/GetMangaByIdQueryHandler.cs
+        // ...
+        using Application.Common.Models; // Cho ResourceObject, RelationshipObject
+        using Application.Common.DTOs.Mangas; // Cho MangaAttributesDto
+        // ...
+
+        // Sửa đổi kiểu trả về của Handler
+        public class GetMangaByIdQueryHandler : IRequestHandler<GetMangaByIdQuery, ResourceObject<MangaAttributesDto>?>
+        {
+            private readonly IUnitOfWork _unitOfWork;
+            private readonly IMapper _mapper;
+            private readonly ILogger<GetMangaByIdQueryHandler> _logger;
+
+            public GetMangaByIdQueryHandler(IUnitOfWork unitOfWork, IMapper mapper, ILogger<GetMangaByIdQueryHandler> logger)
+            {
+                _unitOfWork = unitOfWork;
+                _mapper = mapper;
+                _logger = logger;
             }
 
-            var command = new CreateAuthorCommand 
-            { 
-                Name = createAuthorDto.Name, 
-                Biography = createAuthorDto.Biography 
-            };
-            var authorId = await Mediator.Send(command);
-            return CreatedAtAction(nameof(GetAuthorById), new { id = authorId }, new { AuthorId = authorId });
-        }
-
-        // ... GetAuthorById và GetAuthors không thay đổi ...
-
-        [HttpPut("{id:guid}")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> UpdateAuthor(Guid id, [FromBody] UpdateAuthorDto updateAuthorDto)
-        {
-            var validationResult = await _updateAuthorDtoValidator.ValidateAsync(updateAuthorDto);
-            if (!validationResult.IsValid)
+            public async Task<ResourceObject<MangaAttributesDto>?> Handle(GetMangaByIdQuery request, CancellationToken cancellationToken)
             {
-                var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
+                _logger.LogInformation("GetMangaByIdQueryHandler: Getting manga with ID: {MangaId}", request.MangaId);
+                var manga = await _unitOfWork.MangaRepository.GetMangaWithDetailsAsync(request.MangaId); 
+                // GetMangaWithDetailsAsync cần eager load MangaAuthors.Author, MangaTags.Tag, CoverArts, TranslatedMangas
+
+                if (manga == null)
+                {
+                    _logger.LogWarning("GetMangaByIdQueryHandler: Manga with ID: {MangaId} not found.", request.MangaId);
+                    return null;
+                }
+
+                var mangaAttributes = _mapper.Map<MangaAttributesDto>(manga);
+                var relationships = new List<RelationshipObject>();
+
+                // Authors and Artists
+                if (manga.MangaAuthors != null)
+                {
+                    foreach (var mangaAuthor in manga.MangaAuthors.Where(ma => ma.Author != null))
+                    {
+                        relationships.Add(new RelationshipObject
+                        {
+                            Id = mangaAuthor.Author.AuthorId.ToString(),
+                            Type = mangaAuthor.Role == Domain.Enums.MangaStaffRole.Author ? "author" : "artist"
+                        });
+                    }
+                }
+
+                // Tags
+                if (manga.MangaTags != null)
+                {
+                    foreach (var mangaTag in manga.MangaTags.Where(mt => mt.Tag != null))
+                    {
+                        relationships.Add(new RelationshipObject
+                        {
+                            Id = mangaTag.Tag.TagId.ToString(),
+                            Type = "tag" 
+                        });
+                    }
+                }
+                
+                // Cover Art (ví dụ lấy cover đầu tiên hoặc primary cover)
+                var primaryCover = manga.CoverArts?.FirstOrDefault(); // Cần logic rõ ràng hơn để chọn primary cover nếu có nhiều
+                if (primaryCover != null)
+                {
+                    relationships.Add(new RelationshipObject
+                    {
+                        Id = primaryCover.CoverId.ToString(),
+                        Type = "cover_art" // Theo Mangadex API
+                    });
+                }
+                
+                // Creator (User) - Nếu Manga có trường CreatorUserId
+                // if (manga.CreatorUserId.HasValue) { /* Add relationship type "creator" or "user" */ }
+
+
+                // Translated Mangas (Bản dịch) - Thường không phải là relationship trực tiếp trong JSON:API
+                // Thay vào đó, /manga/{id}/feed hoặc /manga/{id}/aggregate sẽ cung cấp chapter theo ngôn ngữ.
+                // Hoặc có thể có endpoint /manga/{id}/translations để list các bản dịch.
+                // Nếu vẫn muốn đưa vào relationships của Manga gốc:
+                // if (manga.TranslatedMangas != null)
+                // {
+                //     foreach (var tm in manga.TranslatedMangas)
+                //     {
+                //         relationships.Add(new RelationshipObject
+                //         {
+                //             Id = tm.TranslatedMangaId.ToString(),
+                //             Type = "manga_translation" // Hoặc một type phù hợp
+                //         });
+                //     }
+                // }
+
+
+                var resourceObject = new ResourceObject<MangaAttributesDto>
+                {
+                    Id = manga.MangaId.ToString(),
+                    Type = "manga", // Theo Mangadex API
+                    Attributes = mangaAttributes,
+                    Relationships = relationships.DistinctBy(r => new { r.Id, r.Type }).ToList() // Đảm bảo không trùng lặp relationship
+                };
+
+                return resourceObject;
+            }
+        }
+        ```
+    *   **Áp dụng tương tự cho các Query Handler khác:**
+        *   `GetAuthorsQueryHandler`, `GetTagsQueryHandler`, `GetChaptersByTranslatedMangaQueryHandler`, `GetTagGroupByIdQueryHandler`, `GetCoverArtByIdQueryHandler`, `GetTranslatedMangaByIdQueryHandler`, etc.
+        *   **Lưu ý về `type` trong `RelationshipObject`:**
+            *   **Chapter -> User (uploader):** `Type = "user"`
+            *   **Chapter -> Manga (manga gốc của chapter):** `Type = "manga"`
+            *   **Author -> Mangas:** (Trong relationship của Author, mỗi Manga liên quan) `Type = "manga"`
+            *   **Tag -> Mangas:** `Type = "manga"`
+            *   **Tag -> TagGroup:** `Type = "tag_group"`
+            *   **CoverArt -> Manga:** `Type = "manga"`
+            *   **TranslatedManga -> Manga (Manga gốc):** `Type = "manga"`
+
+3.  **Cập Nhật Command Handlers (nếu trả về DTO):**
+    *   **Tệp cần cập nhật:** Các `*CommandHandler.cs` nếu chúng trả về DTO của entity vừa được tạo/cập nhật.
+    *   **Công việc:** Hiện tại, các Command Handlers của bạn chủ yếu trả về `Guid` hoặc `Unit`. Nếu muốn chúng trả về `ResourceObject` hoàn chỉnh, bạn sẽ cần query lại entity sau khi lưu và xây dựng `ResourceObject` tương tự như Query Handlers. Để đơn giản, có thể giữ nguyên kiểu trả về hiện tại của Command Handlers. Client sẽ tự gọi GET endpoint để lấy chi tiết nếu cần.
+
+## III. Cập Nhật Tầng Presentation (API Controllers)
+
+1.  **Cập Nhật Kiểu Trả Về Của Actions và `[ProducesResponseType]`:**
+    *   **Tệp cần cập nhật:** Tất cả các API Controllers trong `MangaReaderDB/Controllers/`.
+    *   **Công việc:**
+        *   Thay đổi kiểu trả về của các action GET:
+            *   Từ `Task<ActionResult<MangaDto>>` thành `async Task<ActionResult<ApiResponse<ResourceObject<MangaAttributesDto>>>>`.
+            *   Từ `Task<ActionResult<PagedResult<MangaDto>>>` thành `async Task<ActionResult<ApiCollectionResponse<ResourceObject<MangaAttributesDto>>>>`.
+        *   Cập nhật `[ProducesResponseType]` tương ứng.
+            ```csharp
+            // Ví dụ trong MangasController - GetMangaById
+            // ...
+            using Application.Common.Models;
+            using Application.Common.DTOs.Mangas;
+            // ...
+            [HttpGet("{id:guid}")]
+            [ProducesResponseType(typeof(ApiResponse<ResourceObject<MangaAttributesDto>>), StatusCodes.Status200OK)]
+            [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+            public async Task<IActionResult> GetMangaById(Guid id)
+            {
+                var query = new GetMangaByIdQuery { MangaId = id };
+                var resource = await Mediator.Send(query); 
+                if (resource == null)
+                {
+                    throw new NotFoundException(nameof(Domain.Entities.Manga), id);
+                }
+                // BaseApiController.Ok(T data) sẽ tự bọc trong ApiResponse<T>
+                return Ok(resource); 
             }
 
-            var command = new UpdateAuthorCommand
+            // Ví dụ trong MangasController - GetMangas
+            [HttpGet]
+            [ProducesResponseType(typeof(ApiCollectionResponse<ResourceObject<MangaAttributesDto>>), StatusCodes.Status200OK)]
+            public async Task<IActionResult> GetMangas([FromQuery] GetMangasQuery query)
             {
-                AuthorId = id,
-                Name = updateAuthorDto.Name,
-                Biography = updateAuthorDto.Biography
-            };
-            await Mediator.Send(command);
-            return NoContent();
-        }
-
-        // ... DeleteAuthor không thay đổi ...
-    }
-} 
-```
-
-#### 2.2. Cập nhật `MangasController.cs`
-
-```csharp
-// MangaReaderDB/Controllers/MangasController.cs
-using Application.Common.DTOs;
-using Application.Common.DTOs.Mangas;
-using Application.Features.Mangas.Commands.AddMangaAuthor;
-using Application.Features.Mangas.Commands.AddMangaTag;
-using Application.Features.Mangas.Commands.CreateManga;
-using Application.Features.Mangas.Commands.DeleteManga;
-using Application.Features.Mangas.Commands.RemoveMangaAuthor;
-using Application.Features.Mangas.Commands.RemoveMangaTag;
-using Application.Features.Mangas.Commands.UpdateManga;
-using Application.Features.Mangas.Queries.GetMangaById;
-using Application.Features.Mangas.Queries.GetMangas;
-using Domain.Enums;
-using FluentValidation;
-using MediatR;
-using Microsoft.AspNetCore.Mvc;
-using System.Linq; // Required for .Select on validationResult.Errors
-
-namespace MangaReaderDB.Controllers
-{
-    public class MangasController : BaseApiController
-    {
-        private readonly IValidator<CreateMangaDto> _createMangaDtoValidator;
-        private readonly IValidator<UpdateMangaDto> _updateMangaDtoValidator;
-        // Nếu MangaTagInputDto và MangaAuthorInputDto có validator riêng, bạn cũng cần inject chúng.
-        // Hiện tại, chúng khá đơn giản và có thể validate trực tiếp trong action nếu cần.
-
-        public MangasController(
-            IValidator<CreateMangaDto> createMangaDtoValidator,
-            IValidator<UpdateMangaDto> updateMangaDtoValidator)
-        {
-            _createMangaDtoValidator = createMangaDtoValidator;
-            _updateMangaDtoValidator = updateMangaDtoValidator;
-        }
-
-        [HttpPost]
-        [ProducesResponseType(typeof(Guid), StatusCodes.Status201Created)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> CreateManga([FromBody] CreateMangaDto createDto)
-        {
-            var validationResult = await _createMangaDtoValidator.ValidateAsync(createDto);
-            if (!validationResult.IsValid)
-            {
-                var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
+                var pagedResources = await Mediator.Send(query); 
+                // BaseApiController.Ok(PagedResult<T> data) sẽ tự bọc trong ApiCollectionResponse<T>
+                return Ok(pagedResources);
             }
-
-            var command = new CreateMangaCommand
+            
+            // Ví dụ trong MangasController - CreateManga
+            [HttpPost]
+            // Sửa kiểu response cho Create
+            [ProducesResponseType(typeof(ApiResponse<ResourceObject<MangaAttributesDto>>), StatusCodes.Status201Created)]
+            [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+            [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)] // Nếu MangaId trong DTO không tìm thấy (ít xảy ra với Create)
+            public async Task<IActionResult> CreateManga([FromBody] CreateMangaDto createDto)
             {
-                Title = createDto.Title,
-                OriginalLanguage = createDto.OriginalLanguage,
-                PublicationDemographic = createDto.PublicationDemographic,
-                Status = createDto.Status,
-                Year = createDto.Year,
-                ContentRating = createDto.ContentRating
-            };
-            var id = await Mediator.Send(command);
-            return CreatedAtAction(nameof(GetMangaById), new { id }, new { MangaId = id });
-        }
+                var validationResult = await _createMangaDtoValidator.ValidateAsync(createDto);
+                if (!validationResult.IsValid)
+                {
+                    throw new Application.Exceptions.ValidationException(validationResult.Errors);
+                }
 
-        // ... GetMangaById và GetMangas không thay đổi ...
+                var command = new CreateMangaCommand
+                {
+                    Title = createDto.Title,
+                    OriginalLanguage = createDto.OriginalLanguage,
+                    PublicationDemographic = createDto.PublicationDemographic,
+                    Status = createDto.Status,
+                    Year = createDto.Year,
+                    ContentRating = createDto.ContentRating
+                };
+                var mangaId = await Mediator.Send(command); // Giả sử command trả về Guid
+                
+                // Lấy lại thông tin đầy đủ để trả về theo cấu trúc mới
+                var query = new GetMangaByIdQuery { MangaId = mangaId };
+                var resource = await Mediator.Send(query);
 
-        [HttpPut("{id:guid}")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> UpdateManga(Guid id, [FromBody] UpdateMangaDto updateDto)
-        {
-            var validationResult = await _updateMangaDtoValidator.ValidateAsync(updateDto);
-            if (!validationResult.IsValid)
-            {
-                var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
+                if (resource == null) 
+                {
+                    _logger.LogError($"Manga with ID {mangaId} was created but could not be retrieved immediately.");
+                    // Trả về lỗi server hoặc một response phù hợp
+                    return StatusCode(StatusCodes.Status500InternalServerError, 
+                        new ApiErrorResponse(new ApiError(500, "Creation Error", "Manga created but could not be retrieved.")));
+                }
+                // BaseApiController.Created<T>(...) sẽ tự bọc trong ApiResponse<T>
+                return Created(nameof(GetMangaById), new { id = mangaId }, resource);
             }
+            ```
+    *   Đảm bảo các phương thức `Ok(data)` và `Created(actionName, routeValues, data)` trong `BaseApiController.cs` hoạt động chính xác với các kiểu `ResourceObject<TAttributesDto>` và `PagedResult<ResourceObject<TAttributesDto>>`.
 
-            var command = new UpdateMangaCommand
-            {
-                MangaId = id,
-                Title = updateDto.Title,
-                OriginalLanguage = updateDto.OriginalLanguage,
-                PublicationDemographic = updateDto.PublicationDemographic,
-                Status = updateDto.Status,
-                Year = updateDto.Year,
-                ContentRating = updateDto.ContentRating,
-                IsLocked = updateDto.IsLocked
-            };
-            await Mediator.Send(command);
-            return NoContent();
-        }
+## IV. DTOs Cho Request Bodies (Không thay đổi)
 
-        // ... DeleteManga không thay đổi ...
-        // ... AddMangaTag, RemoveMangaTag, AddMangaAuthor, RemoveMangaAuthor:
-        // Các DTO input (MangaTagInputDto, MangaAuthorInputDto) hiện tại rất đơn giản.
-        // Nếu chúng có validator riêng (ví dụ: Application/Validation/Mangas/MangaTagInputDtoValidator.cs),
-        // bạn cũng cần inject và validate tương tự.
-        // Nếu không, bạn có thể thêm các kiểm tra đơn giản trực tiếp trong action.
-        // Ví dụ cho AddMangaTag:
-        [HttpPost("{mangaId:guid}/tags")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> AddMangaTag(Guid mangaId, [FromBody] MangaTagInputDto input)
-        {
-            if (input.TagId == Guid.Empty) 
-            {
-                return BadRequest(new { Title = "Validation Failed", Errors = new[] { new { PropertyName = nameof(input.TagId), ErrorMessage = "TagId is required." } } });
-            }
-            var command = new AddMangaTagCommand { MangaId = mangaId, TagId = input.TagId };
-            await Mediator.Send(command);
-            return NoContent();
-        }
-        
-        [HttpPost("{mangaId:guid}/authors")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> AddMangaAuthor(Guid mangaId, [FromBody] MangaAuthorInputDto input)
-        {
-            if (input.AuthorId == Guid.Empty)
-            {
-                 return BadRequest(new { Title = "Validation Failed", Errors = new[] { new { PropertyName = nameof(input.AuthorId), ErrorMessage = "AuthorId is required." } } });
-            }
-            // Bạn có thể thêm validation cho Enum MangaStaffRole nếu cần
-            if (!Enum.IsDefined(typeof(MangaStaffRole), input.Role))
-            {
-                return BadRequest(new { Title = "Validation Failed", Errors = new[] { new { PropertyName = nameof(input.Role), ErrorMessage = "Invalid Role." } } });
-            }
-            var command = new AddMangaAuthorCommand { MangaId = mangaId, AuthorId = input.AuthorId, Role = input.Role };
-            await Mediator.Send(command);
-            return NoContent();
-        }
-        // ... các action khác tương tự ...
-    }
-} 
-```
+*   Các DTOs như `CreateMangaDto`, `UpdateAuthorDto` dùng cho request body **KHÔNG** thay đổi cấu trúc theo `ResourceObject`. Chúng giữ nguyên các trường cần thiết cho việc tạo/cập nhật.
 
-#### 2.3. Cập nhật `ChaptersController.cs` và `ChapterPagesController`
+## V. Kiểm Thử (Testing)
 
-```csharp
-// MangaReaderDB/Controllers/ChaptersController.cs
-using Application.Common.DTOs;
-using Application.Common.DTOs.Chapters;
-// ... (các using khác)
-using FluentValidation;
-using Microsoft.AspNetCore.Mvc;
-using System.Linq; // Required
+1.  **Unit Tests:**
+    *   Viết/cập nhật unit test cho các Query Handlers để kiểm tra:
+        *   `ResourceObject` được tạo ra có đúng `Id`, `Type`.
+        *   `Attributes` được map chính xác.
+        *   `Relationships` được tạo ra đúng số lượng và đúng `Id`, `Type` cho từng mối quan hệ. Đặc biệt kiểm tra logic cho `type` (ví dụ: "author" vs "artist").
+2.  **Integration/API Tests:**
+    *   Thực hiện gọi API đến tất cả các endpoint GET.
+    *   Sử dụng Postman hoặc các công cụ tương tự để kiểm tra cấu trúc JSON của response.
+    *   Xác minh các trường `id`, `type`, `attributes`, `relationships` có mặt và đúng định dạng.
+    *   Kiểm tra giá trị của `type` trong `relationships`.
+    *   Đảm bảo các endpoint POST, PUT, DELETE vẫn hoạt động chính xác.
 
-namespace MangaReaderDB.Controllers
-{
-    public class ChaptersController : BaseApiController
-    {
-        private readonly IValidator<CreateChapterDto> _createChapterDtoValidator;
-        private readonly IValidator<UpdateChapterDto> _updateChapterDtoValidator;
-        private readonly IValidator<CreateChapterPageDto> _createChapterPageDtoValidator; 
-        // UpdateChapterPageDtoValidator sẽ được inject vào ChapterPagesController
+## VI. Cập Nhật Tài Liệu API
 
-        public ChaptersController(
-            IValidator<CreateChapterDto> createChapterDtoValidator,
-            IValidator<UpdateChapterDto> updateChapterDtoValidator,
-            IValidator<CreateChapterPageDto> createChapterPageDtoValidator)
-        {
-            _createChapterDtoValidator = createChapterDtoValidator;
-            _updateChapterDtoValidator = updateChapterDtoValidator;
-            _createChapterPageDtoValidator = createChapterPageDtoValidator;
-        }
+1.  **`docs/api_conventions.md`:**
+    *   Cập nhật phần mô tả cấu trúc response.
+    *   Thêm ví dụ JSON chi tiết cho từng loại resource (Manga, Author,...) với cấu trúc `ResourceObject` mới, bao gồm cả `relationships` và các `type` đa dạng của nó.
+2.  **Swagger/OpenAPI:**
+    *   Đảm bảo các `[ProducesResponseType]` trong controllers được cập nhật đúng để Swagger gen ra tài liệu chính xác.
+    *   Nếu sử dụng các ví dụ Swagger (Swashbuckle.AspNetCore.Filters), cập nhật các ví dụ đó.
 
-        [HttpPost]
-        [ProducesResponseType(typeof(Guid), StatusCodes.Status201Created)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> CreateChapter([FromBody] CreateChapterDto createDto)
-        {
-            var validationResult = await _createChapterDtoValidator.ValidateAsync(createDto);
-            if (!validationResult.IsValid)
-            {
-                var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
-            }
-            // ... (phần còn lại của action)
-            var command = new CreateChapterCommand
-            {
-                TranslatedMangaId = createDto.TranslatedMangaId,
-                UploadedByUserId = createDto.UploadedByUserId, // Tạm thời lấy từ DTO
-                Volume = createDto.Volume,
-                ChapterNumber = createDto.ChapterNumber,
-                Title = createDto.Title,
-                PublishAt = createDto.PublishAt,
-                ReadableAt = createDto.ReadableAt
-            };
-            var id = await Mediator.Send(command);
-            return CreatedAtAction(nameof(GetChapterById), new { id }, new { ChapterId = id });
-        }
+## VII. Thứ Tự Thực Hiện Đề Xuất (Tóm tắt lại)
 
-        // ... GetChapterById, GetChaptersByTranslatedManga không thay đổi ...
-
-        [HttpPut("{id:guid}")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> UpdateChapter(Guid id, [FromBody] UpdateChapterDto updateDto)
-        {
-            var validationResult = await _updateChapterDtoValidator.ValidateAsync(updateDto);
-            if (!validationResult.IsValid)
-            {
-                var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
-            }
-            // ... (phần còn lại của action)
-            var command = new UpdateChapterCommand
-            {
-                ChapterId = id,
-                Volume = updateDto.Volume,
-                ChapterNumber = updateDto.ChapterNumber,
-                Title = updateDto.Title,
-                PublishAt = updateDto.PublishAt,
-                ReadableAt = updateDto.ReadableAt
-            };
-            await Mediator.Send(command);
-            return NoContent();
-        }
-
-        // ... DeleteChapter không thay đổi ...
-
-        [HttpPost("{chapterId:guid}/pages/entry")]
-        [ProducesResponseType(typeof(Guid), StatusCodes.Status201Created)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> CreateChapterPageEntry(Guid chapterId, [FromBody] CreateChapterPageDto createPageDto)
-        {
-            var validationResult = await _createChapterPageDtoValidator.ValidateAsync(createPageDto);
-            if (!validationResult.IsValid)
-            {
-                 var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
-            }
-            // ... (phần còn lại của action)
-            var command = new CreateChapterPageEntryCommand 
-            { 
-                ChapterId = chapterId, 
-                PageNumber = createPageDto.PageNumber
-            };
-            var pageId = await Mediator.Send(command);
-            return CreatedAtAction("UploadChapterPageImage", "ChapterPages", new { pageId = pageId }, new { PageId = pageId });
-        }
-        
-        // ... GetChapterPages không thay đổi ...
-    }
-
-    [Route("api/chapterpages")]
-    public class ChapterPagesController : BaseApiController
-    {
-        private readonly IValidator<UpdateChapterPageDto> _updateChapterPageDtoValidator;
-
-        public ChapterPagesController(IValidator<UpdateChapterPageDto> updateChapterPageDtoValidator)
-        {
-            _updateChapterPageDtoValidator = updateChapterPageDtoValidator;
-        }
-
-        // ... UploadChapterPageImage không thay đổi (validation IFormFile làm trực tiếp) ...
-
-        [HttpPut("{pageId:guid}/details")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> UpdateChapterPageDetails(Guid pageId, [FromBody] UpdateChapterPageDto updateDto)
-        {
-            var validationResult = await _updateChapterPageDtoValidator.ValidateAsync(updateDto);
-            if (!validationResult.IsValid)
-            {
-                var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
-            }
-            // ... (phần còn lại của action)
-            var command = new UpdateChapterPageDetailsCommand
-            {
-                PageId = pageId,
-                PageNumber = updateDto.PageNumber
-            };
-            await Mediator.Send(command);
-            return NoContent();
-        }
-
-        // ... DeleteChapterPage không thay đổi ...
-    }
-} 
-```
-
-#### 2.4. Cập nhật `CoverArtsController.cs`
-
-Action `UploadCoverArtImage` nhận `IFormFile` và các tham số riêng lẻ, không phải một DTO phức tạp từ body. `CreateCoverArtDtoValidator` được inject nhưng chưa được sử dụng. Nếu bạn muốn validate `volume` và `description`, bạn có thể làm như sau:
-
-```csharp
-// MangaReaderDB/Controllers/CoverArtsController.cs
-using Application.Common.DTOs.CoverArts;
-// ... (các using khác)
-using FluentValidation;
-using Microsoft.AspNetCore.Mvc;
-using System.Linq; // Required
-
-namespace MangaReaderDB.Controllers
-{
-    public class CoverArtsController : BaseApiController
-    {
-        private readonly IValidator<CreateCoverArtDto> _createCoverArtDtoValidator;
-
-        public CoverArtsController(IValidator<CreateCoverArtDto> createCoverArtDtoValidator)
-        {
-            _createCoverArtDtoValidator = createCoverArtDtoValidator;
-        }
-
-        [HttpPost("/api/mangas/{mangaId:guid}/covers")]
-        [ProducesResponseType(typeof(Guid), StatusCodes.Status201Created)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> UploadCoverArtImage(Guid mangaId, IFormFile file, [FromForm] string? volume, [FromForm] string? description) // Sử dụng FromForm cho metadata
-        {
-            if (file == null || file.Length == 0)
-            {
-                return BadRequest(new { Title = "Validation Failed", Errors = new[] { new { PropertyName = "file", ErrorMessage = "File is required." } } });
-            }
-             if (file.Length > 5 * 1024 * 1024) // Giới hạn 5MB
-            {
-                return BadRequest(new { Title = "Validation Failed", Errors = new[] { new { PropertyName = "file", ErrorMessage = "File size cannot exceed 5MB." } } });
-            }
-            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
-            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-            if (string.IsNullOrEmpty(ext) || !allowedExtensions.Contains(ext))
-            {
-                 return BadRequest(new { Title = "Validation Failed", Errors = new[] { new { PropertyName = "file", ErrorMessage = "Invalid file type. Allowed types are: " + string.Join(", ", allowedExtensions) } } });
-            }
-
-
-            // Validate metadata (volume, description) bằng CreateCoverArtDtoValidator
-            var metadataDto = new CreateCoverArtDto { MangaId = mangaId, Volume = volume, Description = description };
-            var validationResult = await _createCoverArtDtoValidator.ValidateAsync(metadataDto);
-            if (!validationResult.IsValid)
-            {
-                var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
-            }
-
-            using var stream = file.OpenReadStream();
-            var command = new UploadCoverArtImageCommand
-            {
-                MangaId = mangaId,
-                Volume = volume, // metadataDto.Volume
-                Description = description, // metadataDto.Description
-                ImageStream = stream,
-                OriginalFileName = file.FileName,
-                ContentType = file.ContentType
-            };
-
-            var coverId = await Mediator.Send(command);
-            return CreatedAtAction(nameof(GetCoverArtById), new { id = coverId }, new { CoverId = coverId });
-        }
-
-        // ... các actions khác không thay đổi ...
-    }
-}
-```
-**Lưu ý:** Bạn cần đảm bảo `CreateCoverArtDtoValidator` (`Application/Validation/CoverArts/CreateCoverArtDtoValidator.cs`) được định nghĩa đúng cách để validate `Volume` và `Description`. File này đã được cung cấp trong context.
-
-#### 2.5. Cập nhật `TagGroupsController.cs`
-
-```csharp
-// MangaReaderDB/Controllers/TagGroupsController.cs
-using Application.Common.DTOs.TagGroups;
-// ... (các using khác)
-using FluentValidation;
-using Microsoft.AspNetCore.Mvc;
-using System.Linq; // Required
-
-namespace MangaReaderDB.Controllers
-{
-    public class TagGroupsController : BaseApiController
-    {
-        private readonly IValidator<CreateTagGroupDto> _createTagGroupDtoValidator;
-        private readonly IValidator<UpdateTagGroupDto> _updateTagGroupDtoValidator;
-
-        public TagGroupsController(
-            IValidator<CreateTagGroupDto> createTagGroupDtoValidator,
-            IValidator<UpdateTagGroupDto> updateTagGroupDtoValidator)
-        {
-            _createTagGroupDtoValidator = createTagGroupDtoValidator;
-            _updateTagGroupDtoValidator = updateTagGroupDtoValidator;
-        }
-
-        [HttpPost]
-        [ProducesResponseType(typeof(Guid), StatusCodes.Status201Created)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> CreateTagGroup([FromBody] CreateTagGroupDto createDto)
-        {
-            var validationResult = await _createTagGroupDtoValidator.ValidateAsync(createDto);
-            if (!validationResult.IsValid)
-            {
-                var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
-            }
-            // ... (phần còn lại của action)
-            var command = new CreateTagGroupCommand { Name = createDto.Name };
-            var id = await Mediator.Send(command);
-            return CreatedAtAction(nameof(GetTagGroupById), new { id }, new { TagGroupId = id });
-        }
-
-        // ... GetTagGroupById, GetTagGroups không thay đổi ...
-
-        [HttpPut("{id:guid}")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> UpdateTagGroup(Guid id, [FromBody] UpdateTagGroupDto updateDto)
-        {
-            var validationResult = await _updateTagGroupDtoValidator.ValidateAsync(updateDto);
-            if (!validationResult.IsValid)
-            {
-                var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
-            }
-            // ... (phần còn lại của action)
-            var command = new UpdateTagGroupCommand { TagGroupId = id, Name = updateDto.Name };
-            await Mediator.Send(command);
-            return NoContent();
-        }
-        
-        // ... DeleteTagGroup không thay đổi (vì không nhận DTO từ body) ...
-    }
-}
-```
-
-#### 2.6. Cập nhật `TagsController.cs`
-
-```csharp
-// MangaReaderDB/Controllers/TagsController.cs
-using Application.Common.DTOs.Tags;
-// ... (các using khác)
-using FluentValidation;
-using Microsoft.AspNetCore.Mvc;
-using System.Linq; // Required
-
-namespace MangaReaderDB.Controllers
-{
-    public class TagsController : BaseApiController
-    {
-        private readonly IValidator<CreateTagDto> _createTagDtoValidator;
-        private readonly IValidator<UpdateTagDto> _updateTagDtoValidator;
-
-        public TagsController(
-            IValidator<CreateTagDto> createTagDtoValidator,
-            IValidator<UpdateTagDto> updateTagDtoValidator)
-        {
-            _createTagDtoValidator = createTagDtoValidator;
-            _updateTagDtoValidator = updateTagDtoValidator;
-        }
-
-        [HttpPost]
-        [ProducesResponseType(typeof(Guid), StatusCodes.Status201Created)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> CreateTag([FromBody] CreateTagDto createDto)
-        {
-            var validationResult = await _createTagDtoValidator.ValidateAsync(createDto);
-            if (!validationResult.IsValid)
-            {
-                var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
-            }
-            // ... (phần còn lại của action)
-            var command = new CreateTagCommand { Name = createDto.Name, TagGroupId = createDto.TagGroupId };
-            var id = await Mediator.Send(command);
-            return CreatedAtAction(nameof(GetTagById), new { id }, new { TagId = id });
-        }
-
-        // ... GetTagById, GetTags không thay đổi ...
-
-        [HttpPut("{id:guid}")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> UpdateTag(Guid id, [FromBody] UpdateTagDto updateDto)
-        {
-            var validationResult = await _updateTagDtoValidator.ValidateAsync(updateDto);
-            if (!validationResult.IsValid)
-            {
-                var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
-            }
-            // ... (phần còn lại của action)
-            var command = new UpdateTagCommand { TagId = id, Name = updateDto.Name, TagGroupId = updateDto.TagGroupId };
-            await Mediator.Send(command);
-            return NoContent();
-        }
-
-        // ... DeleteTag không thay đổi ...
-    }
-}
-```
-
-#### 2.7. Cập nhật `TranslatedMangasController.cs`
-
-```csharp
-// MangaReaderDB/Controllers/TranslatedMangasController.cs
-using Application.Common.DTOs.TranslatedMangas;
-// ... (các using khác)
-using FluentValidation;
-using Microsoft.AspNetCore.Mvc;
-using System.Linq; // Required
-
-namespace MangaReaderDB.Controllers
-{
-    public class TranslatedMangasController : BaseApiController
-    {
-        private readonly IValidator<CreateTranslatedMangaDto> _createDtoValidator;
-        private readonly IValidator<UpdateTranslatedMangaDto> _updateDtoValidator;
-
-        public TranslatedMangasController(
-            IValidator<CreateTranslatedMangaDto> createDtoValidator,
-            IValidator<UpdateTranslatedMangaDto> updateDtoValidator)
-        {
-            _createDtoValidator = createDtoValidator;
-            _updateDtoValidator = updateDtoValidator;
-        }
-
-        [HttpPost]
-        [ProducesResponseType(typeof(Guid), StatusCodes.Status201Created)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> CreateTranslatedManga([FromBody] CreateTranslatedMangaDto createDto)
-        {
-            var validationResult = await _createDtoValidator.ValidateAsync(createDto);
-            if (!validationResult.IsValid)
-            {
-                var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
-            }
-            // ... (phần còn lại của action)
-            var command = new CreateTranslatedMangaCommand
-            {
-                MangaId = createDto.MangaId,
-                LanguageKey = createDto.LanguageKey,
-                Title = createDto.Title,
-                Description = createDto.Description
-            };
-            var id = await Mediator.Send(command);
-            return CreatedAtAction(nameof(GetTranslatedMangaById), new { id }, new { TranslatedMangaId = id });
-        }
-
-        // ... GetTranslatedMangaById, GetTranslatedMangasByManga không thay đổi ...
-
-        [HttpPut("{id:guid}")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> UpdateTranslatedManga(Guid id, [FromBody] UpdateTranslatedMangaDto updateDto)
-        {
-            var validationResult = await _updateDtoValidator.ValidateAsync(updateDto);
-            if (!validationResult.IsValid)
-            {
-                var errors = validationResult.Errors.Select(e => new { e.PropertyName, e.ErrorMessage });
-                return BadRequest(new { Title = "Validation Failed", Errors = errors });
-            }
-            // ... (phần còn lại của action)
-            var command = new UpdateTranslatedMangaCommand
-            {
-                TranslatedMangaId = id,
-                LanguageKey = updateDto.LanguageKey,
-                Title = updateDto.Title,
-                Description = updateDto.Description
-            };
-            await Mediator.Send(command);
-            return NoContent();
-        }
-        
-        // ... DeleteTranslatedManga không thay đổi ...
-    }
-}
-```
-
-### Bước 3: Kiểm tra và Hoàn tất
-
-Sau khi thực hiện các thay đổi trên:
-1.  Build lại project.
-2.  Chạy API và kiểm tra các endpoint đã được cập nhật.
-    *   Thử gửi request với dữ liệu hợp lệ.
-    *   Thử gửi request với dữ liệu không hợp lệ để xem API có trả về `400 Bad Request` với danh sách lỗi validation như mong đợi không.
-
-Với những thay đổi này, bạn đã chuyển sang sử dụng FluentValidation theo cách thủ công, cho phép bạn kiểm soát hoàn toàn quá trình validation trong các controllers.
+1.  **Hoàn thiện các DTOs `...AttributesDto.cs`, `ResourceObject.cs`, `RelationshipObject.cs`.**
+2.  **Cập nhật `MappingProfile.cs`** để map Entities sang `...AttributesDto`.
+3.  **Cập nhật (nếu cần) `ApiResponse.cs` và `ApiCollectionResponse.cs`** (có vẻ đã ổn).
+4.  **Refactor Query Handlers:** Bắt đầu với các entity đơn giản, sau đó đến các entity phức tạp.
+5.  **Refactor API Controllers** song song với Query Handlers.
+6.  **Kiểm tra Command Handlers** (nếu chúng trả về DTO, hiện tại chủ yếu là `Guid` hoặc `Unit`).
+7.  **Viết/Cập nhật Unit Tests và API Tests.**
+8.  **Cập nhật tài liệu API.**
 ```

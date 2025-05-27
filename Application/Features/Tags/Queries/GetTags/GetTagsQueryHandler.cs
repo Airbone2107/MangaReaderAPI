@@ -59,15 +59,15 @@ namespace Application.Features.Tags.Queries.GetTags
             // Cần include TagGroup để map TagGroupName trong TagDto
             // Ensure includes are configured in GenericRepository.GetPagedAsync
             var pagedTags = await _unitOfWork.TagRepository.GetPagedAsync(
-                request.PageNumber,
-                request.PageSize,
+                request.Offset,
+                request.Limit,
                 predicate,
                 orderBy,
                 includeProperties: "TagGroup" // Bao gồm TagGroup
             );
 
             var tagDtos = _mapper.Map<List<TagDto>>(pagedTags.Items);
-            return new PagedResult<TagDto>(tagDtos, pagedTags.TotalCount, request.PageNumber, request.PageSize);
+            return new PagedResult<TagDto>(tagDtos, pagedTags.Total, request.Offset, request.Limit);
         }
     }
 } 

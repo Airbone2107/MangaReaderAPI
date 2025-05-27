@@ -8,8 +8,8 @@ namespace Application.Features.Mangas.Queries.GetMangas
 {
     public class GetMangasQuery : IRequest<PagedResult<MangaDto>>
     {
-        public int PageNumber { get; set; } = 1;
-        public int PageSize { get; set; } = 10;
+        public int Offset { get; set; } = 0;
+        public int Limit { get; set; } = 20;
         public string? TitleFilter { get; set; }
         public MangaStatus? StatusFilter { get; set; }
         public ContentRating? ContentRatingFilter { get; set; }

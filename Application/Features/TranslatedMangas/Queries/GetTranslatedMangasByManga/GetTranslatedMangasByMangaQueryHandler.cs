@@ -32,7 +32,7 @@ namespace Application.Features.TranslatedMangas.Queries.GetTranslatedMangasByMan
             if (!mangaExists)
             {
                 _logger.LogWarning("Không tìm thấy Manga với ID: {MangaId} khi lấy translated mangas.", request.MangaId);
-                return new PagedResult<TranslatedMangaDto>(new List<TranslatedMangaDto>(), 0, request.PageNumber, request.PageSize);
+                return new PagedResult<TranslatedMangaDto>(new List<TranslatedMangaDto>(), 0, request.Offset, request.Limit);
             }
 
             // Build filter predicate
@@ -54,15 +54,15 @@ namespace Application.Features.TranslatedMangas.Queries.GetTranslatedMangasByMan
 
             // Use GetPagedAsync with filter and orderby
             var pagedTranslatedMangas = await _unitOfWork.TranslatedMangaRepository.GetPagedAsync(
-                request.PageNumber,
-                request.PageSize,
+                request.Offset,
+                request.Limit,
                 filter,
                 orderBy
                 // Không cần include gì đặc biệt cho TranslatedMangaDto hiện tại
             );
 
             var translatedMangaDtos = _mapper.Map<List<TranslatedMangaDto>>(pagedTranslatedMangas.Items);
-            return new PagedResult<TranslatedMangaDto>(translatedMangaDtos, pagedTranslatedMangas.TotalCount, request.PageNumber, request.PageSize);
+            return new PagedResult<TranslatedMangaDto>(translatedMangaDtos, pagedTranslatedMangas.Total, request.Offset, request.Limit);
         }
     }
 } 

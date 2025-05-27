@@ -6,8 +6,8 @@ namespace Application.Features.TagGroups.Queries.GetTagGroups
 {
     public class GetTagGroupsQuery : IRequest<PagedResult<TagGroupDto>>
     {
-        public int PageNumber { get; set; } = 1;
-        public int PageSize { get; set; } = 10;
+        public int Offset { get; set; } = 0;
+        public int Limit { get; set; } = 100;
         public string? NameFilter { get; set; }
         public string OrderBy { get; set; } = "Name";
         public bool Ascending { get; set; } = true;

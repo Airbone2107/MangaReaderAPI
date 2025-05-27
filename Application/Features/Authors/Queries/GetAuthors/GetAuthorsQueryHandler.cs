@@ -24,8 +24,8 @@ namespace Application.Features.Authors.Queries.GetAuthors
 
         public async Task<PagedResult<AuthorDto>> Handle(GetAuthorsQuery request, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("GetAuthorsQueryHandler.Handle - Lấy danh sách tác giả với PageNumber: {PageNumber}, PageSize: {PageSize}, NameFilter: {NameFilter}",
-                request.PageNumber, request.PageSize, request.NameFilter);
+            _logger.LogInformation("GetAuthorsQueryHandler.Handle - Lấy danh sách tác giả với Offset: {Offset}, Limit: {Limit}, NameFilter: {NameFilter}",
+                request.Offset, request.Limit, request.NameFilter);
 
             // Xây dựng bộ lọc
             Expression<Func<Author, bool>>? filter = null;
@@ -39,15 +39,15 @@ namespace Application.Features.Authors.Queries.GetAuthors
             Func<IQueryable<Author>, IOrderedQueryable<Author>> orderBy = q => q.OrderBy(a => a.Name); // Sắp xếp theo tên mặc định
 
             var pagedAuthors = await _unitOfWork.AuthorRepository.GetPagedAsync(
-                request.PageNumber,
-                request.PageSize,
+                request.Offset,
+                request.Limit,
                 filter,
                 orderBy
             );
 
             var authorDtos = _mapper.Map<List<AuthorDto>>(pagedAuthors.Items);
             
-            return new PagedResult<AuthorDto>(authorDtos, pagedAuthors.TotalCount, request.PageNumber, request.PageSize);
+            return new PagedResult<AuthorDto>(authorDtos, pagedAuthors.Total, request.Offset, request.Limit);
         }
     }
 } 

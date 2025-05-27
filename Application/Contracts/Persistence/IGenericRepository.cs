@@ -20,15 +20,15 @@ namespace Application.Contracts.Persistence
         Task<IReadOnlyList<T>> GetAllAsync();
 
         /// <summary>
-        /// Lấy danh sách các entities có phân trang.
+        /// Lấy danh sách các entities có phân trang sử dụng offset và limit.
         /// </summary>
-        /// <param name="pageNumber">Số trang hiện tại.</param>
-        /// <param name="pageSize">Kích thước của trang.</param>
+        /// <param name="offset">Số lượng bản ghi bỏ qua.</param>
+        /// <param name="limit">Số lượng bản ghi tối đa lấy về.</param>
         /// <param name="filter">Biểu thức lọc (tùy chọn).</param>
         /// <param name="orderBy">Hàm sắp xếp (tùy chọn).</param>
         /// <param name="includeProperties">Các navigation properties cần include, cách nhau bởi dấu phẩy (tùy chọn).</param>
         /// <returns>Kết quả phân trang của entities.</returns>
-        Task<PagedResult<T>> GetPagedAsync(int pageNumber, int pageSize, Expression<Func<T, bool>>? filter = null, Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null, string? includeProperties = null);
+        Task<PagedResult<T>> GetPagedAsync(int offset, int limit, Expression<Func<T, bool>>? filter = null, Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null, string? includeProperties = null);
 
         /// <summary>
         /// Thêm một entity mới. Không gọi SaveChanges.

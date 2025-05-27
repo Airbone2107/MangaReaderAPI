@@ -33,7 +33,7 @@ namespace Application.Features.Chapters.Queries.GetChaptersByTranslatedManga
             {
                 _logger.LogWarning("Không tìm thấy TranslatedManga với ID: {TranslatedMangaId} khi lấy danh sách chapter.", request.TranslatedMangaId);
                 // Trả về kết quả rỗng nếu TranslatedManga không tồn tại.
-                return new PagedResult<ChapterDto>(new List<ChapterDto>(), 0, request.PageNumber, request.PageSize);
+                return new PagedResult<ChapterDto>(new List<ChapterDto>(), 0, request.Offset, request.Limit);
             }
 
             // Build filter predicate
@@ -65,8 +65,8 @@ namespace Application.Features.Chapters.Queries.GetChaptersByTranslatedManga
             // Cần include User và ChapterPages cho mapping ChapterDto
             // Ensure includes are configured in GenericRepository.GetPagedAsync
              var pagedChapters = await _unitOfWork.ChapterRepository.GetPagedAsync(
-                request.PageNumber,
-                request.PageSize,
+                request.Offset,
+                request.Limit,
                 filter,
                 orderBy,
                 includeProperties: "User,ChapterPages" // Bao gồm User và ChapterPages
@@ -75,7 +75,7 @@ namespace Application.Features.Chapters.Queries.GetChaptersByTranslatedManga
             // AutoMapper sẽ tự động map và sắp xếp ChapterPages bên trong mỗi ChapterDto
 
             var chapterDtos = _mapper.Map<List<ChapterDto>>(pagedChapters.Items);
-            return new PagedResult<ChapterDto>(chapterDtos, pagedChapters.TotalCount, request.PageNumber, request.PageSize);
+            return new PagedResult<ChapterDto>(chapterDtos, pagedChapters.Total, request.Offset, request.Limit);
         }
     }
 } 

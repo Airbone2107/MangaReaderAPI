@@ -94,8 +94,8 @@ namespace Application.Features.Mangas.Queries.GetMangas
 
             // Use GetPagedAsync with the constructed filter and orderby, and includes
             var pagedMangas = await _unitOfWork.MangaRepository.GetPagedAsync(
-                request.PageNumber,
-                request.PageSize,
+                request.Offset,
+                request.Limit,
                 predicate,
                 orderBy,
                 // Include necessary navigations for mapping to MangaDto
@@ -107,7 +107,7 @@ namespace Application.Features.Mangas.Queries.GetMangas
             var mangaDtos = _mapper.Map<List<MangaDto>>(pagedMangas.Items);
 
             // Return the paged result of DTOs
-            return new PagedResult<MangaDto>(mangaDtos, pagedMangas.TotalCount, request.PageNumber, request.PageSize);
+            return new PagedResult<MangaDto>(mangaDtos, pagedMangas.Total, request.Offset, request.Limit);
         }
     }
 } 

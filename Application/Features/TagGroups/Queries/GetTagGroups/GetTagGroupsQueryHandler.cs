@@ -48,14 +48,14 @@ namespace Application.Features.TagGroups.Queries.GetTagGroups
             // Use GetPagedAsync with filter and orderby
             // TODO: [Improvement] Nếu Query có tùy chọn IncludeTags, cần thêm includes: "Tags" vào đây.
             var pagedTagGroups = await _unitOfWork.TagGroupRepository.GetPagedAsync(
-                request.PageNumber,
-                request.PageSize,
+                request.Offset,
+                request.Limit,
                 filter,
                 orderBy
             );
 
             var tagGroupDtos = _mapper.Map<List<TagGroupDto>>(pagedTagGroups.Items);
-            return new PagedResult<TagGroupDto>(tagGroupDtos, pagedTagGroups.TotalCount, request.PageNumber, request.PageSize);
+            return new PagedResult<TagGroupDto>(tagGroupDtos, pagedTagGroups.Total, request.Offset, request.Limit);
         }
     }
 } 
