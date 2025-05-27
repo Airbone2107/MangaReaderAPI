@@ -1,5 +1,5 @@
-using Application.Common.DTOs;
 using Application.Common.DTOs.TagGroups;
+using Application.Common.Models; // For ResourceObject
 using Application.Common.Responses;
 using Application.Exceptions;
 using Application.Features.TagGroups.Commands.CreateTagGroup;
@@ -32,7 +32,7 @@ namespace MangaReaderDB.Controllers
         }
 
         [HttpPost]
-        [ProducesResponseType(typeof(ApiResponse<TagGroupDto>), StatusCodes.Status201Created)] // Sửa ProducesResponseType để khớp DTO
+        [ProducesResponseType(typeof(ApiResponse<ResourceObject<TagGroupAttributesDto>>), StatusCodes.Status201Created)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> CreateTagGroup([FromBody] CreateTagGroupDto createDto)
         {
@@ -43,34 +43,34 @@ namespace MangaReaderDB.Controllers
             }
 
             var command = new CreateTagGroupCommand { Name = createDto.Name };
-            var id = await Mediator.Send(command);
-            var tagGroupDto = await Mediator.Send(new GetTagGroupByIdQuery { TagGroupId = id });
+            var tagGroupId = await Mediator.Send(command);
+            var tagGroupResource = await Mediator.Send(new GetTagGroupByIdQuery { TagGroupId = tagGroupId });
 
-            if (tagGroupDto == null)
+            if (tagGroupResource == null)
             {
-                _logger.LogError($"FATAL: TagGroup with ID {id} was not found after creation. This indicates a critical issue.");
-                throw new InvalidOperationException($"Could not retrieve TagGroup with ID {id} after creation. This is an unexpected error.");
+                _logger.LogError($"FATAL: TagGroup with ID {tagGroupId} was not found after creation!");
+                return StatusCode(StatusCodes.Status500InternalServerError, 
+                    new ApiErrorResponse(new ApiError(500, "Creation Error", "Failed to retrieve resource after creation.")));
             }
-            // Phương thức Created<T> từ BaseApiController sẽ tự động bọc tagGroupDto trong ApiResponse<TagGroupDto>
-            return Created(nameof(GetTagGroupById), new { id }, tagGroupDto);
+            return Created(nameof(GetTagGroupById), new { id = tagGroupId }, tagGroupResource);
         }
 
         [HttpGet("{id:guid}")]
-        [ProducesResponseType(typeof(ApiResponse<TagGroupDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<ResourceObject<TagGroupAttributesDto>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetTagGroupById(Guid id)
         {
             var query = new GetTagGroupByIdQuery { TagGroupId = id };
-            var result = await Mediator.Send(query);
-            if (result == null)
+            var tagGroupResource = await Mediator.Send(query);
+            if (tagGroupResource == null)
             {
                 throw new NotFoundException(nameof(Domain.Entities.TagGroup), id);
             }
-            return Ok(result);
+            return Ok(tagGroupResource);
         }
 
         [HttpGet]
-        [ProducesResponseType(typeof(ApiCollectionResponse<TagGroupDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiCollectionResponse<ResourceObject<TagGroupAttributesDto>>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetTagGroups([FromQuery] GetTagGroupsQuery query)
         {
             var result = await Mediator.Send(query);
@@ -90,7 +90,6 @@ namespace MangaReaderDB.Controllers
             }
 
             var command = new UpdateTagGroupCommand { TagGroupId = id, Name = updateDto.Name };
-            // Handler sẽ throw NotFoundException hoặc ValidationException (tên trùng)
             await Mediator.Send(command);
             return NoContent();
         }
@@ -98,11 +97,10 @@ namespace MangaReaderDB.Controllers
         [HttpDelete("{id:guid}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
-        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)] // Cho trường hợp không xóa được do còn tag
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)] 
         public async Task<IActionResult> DeleteTagGroup(Guid id)
         {
             var command = new DeleteTagGroupCommand { TagGroupId = id };
-            // Handler sẽ throw NotFoundException hoặc DeleteFailureException
             await Mediator.Send(command);
             return NoContent();
         }

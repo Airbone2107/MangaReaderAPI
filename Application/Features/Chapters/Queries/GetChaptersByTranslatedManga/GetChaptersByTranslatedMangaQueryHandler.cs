@@ -1,5 +1,6 @@
 using Application.Common.DTOs;
 using Application.Common.DTOs.Chapters;
+using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
 using Domain.Entities;
@@ -7,10 +8,11 @@ using MediatR;
 using Microsoft.EntityFrameworkCore; // Cần cho Include
 using Microsoft.Extensions.Logging;
 using System.Linq.Expressions;
+using Application.Common.Extensions;
 
 namespace Application.Features.Chapters.Queries.GetChaptersByTranslatedManga
 {
-    public class GetChaptersByTranslatedMangaQueryHandler : IRequestHandler<GetChaptersByTranslatedMangaQuery, PagedResult<ChapterDto>>
+    public class GetChaptersByTranslatedMangaQueryHandler : IRequestHandler<GetChaptersByTranslatedMangaQuery, PagedResult<ResourceObject<ChapterAttributesDto>>>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
@@ -23,7 +25,7 @@ namespace Application.Features.Chapters.Queries.GetChaptersByTranslatedManga
             _logger = logger;
         }
 
-        public async Task<PagedResult<ChapterDto>> Handle(GetChaptersByTranslatedMangaQuery request, CancellationToken cancellationToken)
+        public async Task<PagedResult<ResourceObject<ChapterAttributesDto>>> Handle(GetChaptersByTranslatedMangaQuery request, CancellationToken cancellationToken)
         {
             _logger.LogInformation("GetChaptersByTranslatedMangaQueryHandler.Handle - Lấy chapters cho TranslatedMangaId: {TranslatedMangaId}", request.TranslatedMangaId);
 
@@ -33,7 +35,7 @@ namespace Application.Features.Chapters.Queries.GetChaptersByTranslatedManga
             {
                 _logger.LogWarning("Không tìm thấy TranslatedManga với ID: {TranslatedMangaId} khi lấy danh sách chapter.", request.TranslatedMangaId);
                 // Trả về kết quả rỗng nếu TranslatedManga không tồn tại.
-                return new PagedResult<ChapterDto>(new List<ChapterDto>(), 0, request.Offset, request.Limit);
+                return new PagedResult<ResourceObject<ChapterAttributesDto>>(new List<ResourceObject<ChapterAttributesDto>>(), 0, request.Offset, request.Limit);
             }
 
             // Build filter predicate
@@ -69,13 +71,33 @@ namespace Application.Features.Chapters.Queries.GetChaptersByTranslatedManga
                 request.Limit,
                 filter,
                 orderBy,
-                includeProperties: "User,ChapterPages" // Bao gồm User và ChapterPages
+                includeProperties: "User,ChapterPages,TranslatedManga.Manga" // Bao gồm User, ChapterPages và TranslatedManga.Manga
             );
             
             // AutoMapper sẽ tự động map và sắp xếp ChapterPages bên trong mỗi ChapterDto
 
-            var chapterDtos = _mapper.Map<List<ChapterDto>>(pagedChapters.Items);
-            return new PagedResult<ChapterDto>(chapterDtos, pagedChapters.Total, request.Offset, request.Limit);
+            var resourceObjects = new List<ResourceObject<ChapterAttributesDto>>();
+            foreach(var chapter in pagedChapters.Items)
+            {
+                var attributes = _mapper.Map<ChapterAttributesDto>(chapter);
+                var relationships = new List<RelationshipObject>();
+                if (chapter.User != null)
+                {
+                    relationships.Add(new RelationshipObject { Id = chapter.User.UserId.ToString(), Type = "user" });
+                }
+                if (chapter.TranslatedManga?.Manga != null)
+                {
+                    relationships.Add(new RelationshipObject { Id = chapter.TranslatedManga.Manga.MangaId.ToString(), Type = "manga" });
+                }
+                resourceObjects.Add(new ResourceObject<ChapterAttributesDto>
+                {
+                    Id = chapter.ChapterId.ToString(),
+                    Type = "chapter",
+                    Attributes = attributes,
+                    Relationships = relationships.Any() ? relationships : null
+                });
+            }
+            return new PagedResult<ResourceObject<ChapterAttributesDto>>(resourceObjects, pagedChapters.Total, request.Offset, request.Limit);
         }
     }
 } 

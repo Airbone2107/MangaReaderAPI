@@ -1,11 +1,12 @@
 using Application.Common.DTOs;
 using Application.Common.DTOs.Chapters;
+using Application.Common.Models;
 using MediatR;
 using System.Collections.Generic; // Cần cho List
 
 namespace Application.Features.Chapters.Queries.GetChaptersByTranslatedManga
 {
-    public class GetChaptersByTranslatedMangaQuery : IRequest<PagedResult<ChapterDto>>
+    public class GetChaptersByTranslatedMangaQuery : IRequest<PagedResult<ResourceObject<ChapterAttributesDto>>>
     {
         public Guid TranslatedMangaId { get; set; }
         public int Offset { get; set; } = 0;

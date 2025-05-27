@@ -1,10 +1,11 @@
 using Application.Common.DTOs;
 using Application.Common.DTOs.TagGroups;
+using Application.Common.Models;
 using MediatR;
 
 namespace Application.Features.TagGroups.Queries.GetTagGroups
 {
-    public class GetTagGroupsQuery : IRequest<PagedResult<TagGroupDto>>
+    public class GetTagGroupsQuery : IRequest<PagedResult<ResourceObject<TagGroupAttributesDto>>>
     {
         public int Offset { get; set; } = 0;
         public int Limit { get; set; } = 100;

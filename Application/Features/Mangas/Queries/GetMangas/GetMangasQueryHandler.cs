@@ -1,5 +1,6 @@
 using Application.Common.DTOs;
 using Application.Common.DTOs.Mangas;
+using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
 using Domain.Entities;
@@ -12,7 +13,7 @@ using Application.Common.Extensions; // Thêm using này
 
 namespace Application.Features.Mangas.Queries.GetMangas
 {
-    public class GetMangasQueryHandler : IRequestHandler<GetMangasQuery, PagedResult<MangaDto>>
+    public class GetMangasQueryHandler : IRequestHandler<GetMangasQuery, PagedResult<ResourceObject<MangaAttributesDto>>>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
@@ -25,7 +26,7 @@ namespace Application.Features.Mangas.Queries.GetMangas
             _logger = logger;
         }
 
-        public async Task<PagedResult<MangaDto>> Handle(GetMangasQuery request, CancellationToken cancellationToken)
+        public async Task<PagedResult<ResourceObject<MangaAttributesDto>>> Handle(GetMangasQuery request, CancellationToken cancellationToken)
         {
             _logger.LogInformation("GetMangasQueryHandler.Handle called with request: {@GetMangasQuery}", request);
 
@@ -100,14 +101,61 @@ namespace Application.Features.Mangas.Queries.GetMangas
                 orderBy,
                 // Include necessary navigations for mapping to MangaDto
                 // Ensure these includes are configured in GenericRepository.GetPagedAsync
-                includeProperties: "MangaTags.Tag.TagGroup,MangaAuthors.Author,CoverArts,TranslatedMangas"
+                includeProperties: "MangaTags.Tag.TagGroup,MangaAuthors.Author,CoverArts"
             );
 
-            // Map the paged results to DTOs
-            var mangaDtos = _mapper.Map<List<MangaDto>>(pagedMangas.Items);
+            var mangaResourceObjects = new List<ResourceObject<MangaAttributesDto>>();
+            foreach (var manga in pagedMangas.Items)
+            {
+                var mangaAttributes = _mapper.Map<MangaAttributesDto>(manga);
+                var relationships = new List<RelationshipObject>();
 
-            // Return the paged result of DTOs
-            return new PagedResult<MangaDto>(mangaDtos, pagedMangas.Total, request.Offset, request.Limit);
+                if (manga.MangaAuthors != null)
+                {
+                    foreach (var mangaAuthor in manga.MangaAuthors)
+                    {
+                        if (mangaAuthor.Author != null) {
+                             relationships.Add(new RelationshipObject
+                            {
+                                Id = mangaAuthor.Author.AuthorId.ToString(),
+                                Type = mangaAuthor.Role == MangaStaffRole.Author ? "author" : "artist"
+                            });
+                        }
+                    }
+                }
+                if (manga.MangaTags != null)
+                {
+                     foreach (var mangaTag in manga.MangaTags)
+                    {
+                        if (mangaTag.Tag != null) {
+                            relationships.Add(new RelationshipObject
+                            {
+                                Id = mangaTag.Tag.TagId.ToString(),
+                                Type = "tag"
+                            });
+                        }
+                    }
+                }
+                var primaryCover = manga.CoverArts?.FirstOrDefault(); 
+                if (primaryCover != null)
+                {
+                    relationships.Add(new RelationshipObject
+                    {
+                        Id = primaryCover.CoverId.ToString(),
+                        Type = "cover_art"
+                    });
+                }
+
+                mangaResourceObjects.Add(new ResourceObject<MangaAttributesDto>
+                {
+                    Id = manga.MangaId.ToString(),
+                    Type = "manga",
+                    Attributes = mangaAttributes,
+                    Relationships = relationships.Any() ? relationships : null
+                });
+            }
+            
+            return new PagedResult<ResourceObject<MangaAttributesDto>>(mangaResourceObjects, pagedMangas.Total, request.Offset, request.Limit);
         }
     }
 } 

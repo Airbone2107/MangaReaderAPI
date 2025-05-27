@@ -1,5 +1,6 @@
 using Application.Common.DTOs;
 using Application.Common.DTOs.CoverArts;
+using Application.Common.Models; // For ResourceObject
 using Application.Common.Responses;
 using Application.Exceptions;
 using Application.Features.CoverArts.Commands.DeleteCoverArt;
@@ -29,7 +30,7 @@ namespace MangaReaderDB.Controllers
         }
 
         [HttpPost("/mangas/{mangaId:guid}/covers")] // Custom route to associate with manga
-        [ProducesResponseType(typeof(ApiResponse<CoverArtDto>), StatusCodes.Status201Created)] // Sửa ProducesResponseType
+        [ProducesResponseType(typeof(ApiResponse<ResourceObject<CoverArtAttributesDto>>), StatusCodes.Status201Created)] // Sửa ProducesResponseType
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UploadCoverArtImage(Guid mangaId, IFormFile file, [FromForm] string? volume, [FromForm] string? description) // Sử dụng FromForm cho metadata
@@ -68,32 +69,32 @@ namespace MangaReaderDB.Controllers
             };
 
             var coverId = await Mediator.Send(command);
-            var coverArtDto = await Mediator.Send(new GetCoverArtByIdQuery { CoverId = coverId });
+            var coverArtResource = await Mediator.Send(new GetCoverArtByIdQuery { CoverId = coverId });
 
-            if (coverArtDto == null)
+            if (coverArtResource == null)
             {
                 _logger.LogError($"FATAL: CoverArt with ID {coverId} was not found after creation! This indicates a critical issue.");
                 throw new InvalidOperationException($"Could not retrieve CoverArt with ID {coverId} after creation. This is an unexpected error.");
             }
-            return Created(nameof(GetCoverArtById), new { id = coverId }, coverArtDto);
+            return Created(nameof(GetCoverArtById), new { id = coverId }, coverArtResource);
         }
 
         [HttpGet("{id:guid}")]
-        [ProducesResponseType(typeof(ApiResponse<CoverArtDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<ResourceObject<CoverArtAttributesDto>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetCoverArtById(Guid id)
         {
             var query = new GetCoverArtByIdQuery { CoverId = id };
-            var result = await Mediator.Send(query);
-            if (result == null)
+            var coverArtResource = await Mediator.Send(query);
+            if (coverArtResource == null)
             {
                  throw new NotFoundException(nameof(Domain.Entities.CoverArt), id);
             }
-            return Ok(result);
+            return Ok(coverArtResource);
         }
 
         [HttpGet("/mangas/{mangaId:guid}/covers")] // Custom route
-        [ProducesResponseType(typeof(ApiCollectionResponse<CoverArtDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiCollectionResponse<ResourceObject<CoverArtAttributesDto>>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetCoverArtsByManga(Guid mangaId, [FromQuery] GetCoverArtsByMangaQuery query)
         {
             query.MangaId = mangaId;

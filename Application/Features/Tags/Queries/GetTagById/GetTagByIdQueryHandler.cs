@@ -1,4 +1,5 @@
 using Application.Common.DTOs.Tags;
+using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
 using MediatR;
@@ -7,7 +8,7 @@ using Domain.Entities; // Cần thiết cho FindFirstOrDefaultAsync
 
 namespace Application.Features.Tags.Queries.GetTagById
 {
-    public class GetTagByIdQueryHandler : IRequestHandler<GetTagByIdQuery, TagDto?>
+    public class GetTagByIdQueryHandler : IRequestHandler<GetTagByIdQuery, ResourceObject<TagAttributesDto>?>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
@@ -20,7 +21,7 @@ namespace Application.Features.Tags.Queries.GetTagById
             _logger = logger;
         }
 
-        public async Task<TagDto?> Handle(GetTagByIdQuery request, CancellationToken cancellationToken)
+        public async Task<ResourceObject<TagAttributesDto>?> Handle(GetTagByIdQuery request, CancellationToken cancellationToken)
         {
             _logger.LogInformation("GetTagByIdQueryHandler.Handle - Lấy tag với ID: {TagId}", request.TagId);
             
@@ -35,8 +36,26 @@ namespace Application.Features.Tags.Queries.GetTagById
                 _logger.LogWarning("Không tìm thấy tag với ID: {TagId}", request.TagId);
                 return null;
             }
-            // AutoMapper sẽ tự động map Tag sang TagDto, bao gồm cả TagGroup.Name nhờ include.
-            return _mapper.Map<TagDto>(tag);
+            
+            var attributes = _mapper.Map<TagAttributesDto>(tag);
+            var relationships = new List<RelationshipObject>();
+
+            if (tag.TagGroup != null)
+            {
+                relationships.Add(new RelationshipObject
+                {
+                    Id = tag.TagGroup.TagGroupId.ToString(),
+                    Type = "tag_group" 
+                });
+            }
+            
+            return new ResourceObject<TagAttributesDto>
+            {
+                Id = tag.TagId.ToString(),
+                Type = "tag",
+                Attributes = attributes,
+                Relationships = relationships.Any() ? relationships : null
+            };
         }
     }
 } 

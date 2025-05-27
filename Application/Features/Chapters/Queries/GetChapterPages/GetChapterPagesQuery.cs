@@ -1,10 +1,11 @@
 using Application.Common.DTOs;
 using Application.Common.DTOs.Chapters;
+using Application.Common.Models;
 using MediatR;
 
 namespace Application.Features.Chapters.Queries.GetChapterPages
 {
-    public class GetChapterPagesQuery : IRequest<PagedResult<ChapterPageDto>>
+    public class GetChapterPagesQuery : IRequest<PagedResult<ResourceObject<ChapterPageAttributesDto>>>
     {
         public Guid ChapterId { get; set; }
         public int Offset { get; set; } = 0;

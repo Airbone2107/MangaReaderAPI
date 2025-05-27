@@ -1,5 +1,6 @@
 using Application.Common.DTOs;
 using Application.Common.DTOs.Tags;
+using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
 using Domain.Entities;
@@ -11,7 +12,7 @@ using Application.Common.Extensions;
 
 namespace Application.Features.Tags.Queries.GetTags
 {
-    public class GetTagsQueryHandler : IRequestHandler<GetTagsQuery, PagedResult<TagDto>>
+    public class GetTagsQueryHandler : IRequestHandler<GetTagsQuery, PagedResult<ResourceObject<TagAttributesDto>>>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
@@ -24,7 +25,7 @@ namespace Application.Features.Tags.Queries.GetTags
             _logger = logger;
         }
 
-        public async Task<PagedResult<TagDto>> Handle(GetTagsQuery request, CancellationToken cancellationToken)
+        public async Task<PagedResult<ResourceObject<TagAttributesDto>>> Handle(GetTagsQuery request, CancellationToken cancellationToken)
         {
             _logger.LogInformation("GetTagsQueryHandler.Handle called with request: {@GetTagsQuery}", request);
 
@@ -66,8 +67,28 @@ namespace Application.Features.Tags.Queries.GetTags
                 includeProperties: "TagGroup" // Bao gồm TagGroup
             );
 
-            var tagDtos = _mapper.Map<List<TagDto>>(pagedTags.Items);
-            return new PagedResult<TagDto>(tagDtos, pagedTags.Total, request.Offset, request.Limit);
+            var tagResourceObjects = new List<ResourceObject<TagAttributesDto>>();
+            foreach(var tag in pagedTags.Items)
+            {
+                var attributes = _mapper.Map<TagAttributesDto>(tag);
+                var relationships = new List<RelationshipObject>();
+                if (tag.TagGroup != null)
+                {
+                    relationships.Add(new RelationshipObject
+                    {
+                        Id = tag.TagGroup.TagGroupId.ToString(),
+                        Type = "tag_group"
+                    });
+                }
+                tagResourceObjects.Add(new ResourceObject<TagAttributesDto>
+                {
+                    Id = tag.TagId.ToString(),
+                    Type = "tag",
+                    Attributes = attributes,
+                    Relationships = relationships.Any() ? relationships : null
+                });
+            }
+            return new PagedResult<ResourceObject<TagAttributesDto>>(tagResourceObjects, pagedTags.Total, request.Offset, request.Limit);
         }
     }
 } 

@@ -1,15 +1,17 @@
 using Application.Common.DTOs;
 using Application.Common.DTOs.CoverArts;
+using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
 using Domain.Entities;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using System.Linq.Expressions;
+using Application.Common.Extensions;
 
 namespace Application.Features.CoverArts.Queries.GetCoverArtsByManga
 {
-    public class GetCoverArtsByMangaQueryHandler : IRequestHandler<GetCoverArtsByMangaQuery, PagedResult<CoverArtDto>>
+    public class GetCoverArtsByMangaQueryHandler : IRequestHandler<GetCoverArtsByMangaQuery, PagedResult<ResourceObject<CoverArtAttributesDto>>>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
@@ -22,35 +24,46 @@ namespace Application.Features.CoverArts.Queries.GetCoverArtsByManga
             _logger = logger;
         }
 
-        public async Task<PagedResult<CoverArtDto>> Handle(GetCoverArtsByMangaQuery request, CancellationToken cancellationToken)
+        public async Task<PagedResult<ResourceObject<CoverArtAttributesDto>>> Handle(GetCoverArtsByMangaQuery request, CancellationToken cancellationToken)
         {
             _logger.LogInformation("GetCoverArtsByMangaQueryHandler.Handle - Lấy cover arts cho MangaId: {MangaId}", request.MangaId);
 
-             // Kiểm tra sự tồn tại của Manga
             var mangaExists = await _unitOfWork.MangaRepository.ExistsAsync(request.MangaId);
             if (!mangaExists)
             {
                 _logger.LogWarning("Không tìm thấy Manga với ID: {MangaId} khi lấy cover arts.", request.MangaId);
-                return new PagedResult<CoverArtDto>(new List<CoverArtDto>(), 0, request.Offset, request.Limit);
+                return new PagedResult<ResourceObject<CoverArtAttributesDto>>(new List<ResourceObject<CoverArtAttributesDto>>(), 0, request.Offset, request.Limit);
             }
 
-            // Build filter predicate
             Expression<Func<CoverArt, bool>> filter = ca => ca.MangaId == request.MangaId;
-            // TODO: [Improvement] Thêm bộ lọc theo Volume
-
-            // Build OrderBy function
-            Func<IQueryable<CoverArt>, IOrderedQueryable<CoverArt>> orderBy = q => q.OrderByDescending(ca => ca.CreatedAt); // Mặc định mới nhất lên trước
-            // TODO: [Improvement] Thêm sắp xếp theo Volume
+            Func<IQueryable<CoverArt>, IOrderedQueryable<CoverArt>> orderBy = q => q.OrderByDescending(ca => ca.CreatedAt);
 
             var pagedCoverArts = await _unitOfWork.CoverArtRepository.GetPagedAsync(
                 request.Offset,
                 request.Limit,
                 filter,
-                orderBy
+                orderBy,
+                includeProperties: "Manga" 
             );
 
-            var coverArtDtos = _mapper.Map<List<CoverArtDto>>(pagedCoverArts.Items);
-            return new PagedResult<CoverArtDto>(coverArtDtos, pagedCoverArts.Total, request.Offset, request.Limit);
+            var resourceObjects = new List<ResourceObject<CoverArtAttributesDto>>();
+            foreach(var coverArt in pagedCoverArts.Items)
+            {
+                var attributes = _mapper.Map<CoverArtAttributesDto>(coverArt);
+                var relationships = new List<RelationshipObject>();
+                if (coverArt.Manga != null) 
+                {
+                    relationships.Add(new RelationshipObject { Id = coverArt.Manga.MangaId.ToString(), Type = "manga" });
+                }
+                resourceObjects.Add(new ResourceObject<CoverArtAttributesDto>
+                {
+                    Id = coverArt.CoverId.ToString(),
+                    Type = "cover_art",
+                    Attributes = attributes,
+                    Relationships = relationships.Any() ? relationships : null
+                });
+            }
+            return new PagedResult<ResourceObject<CoverArtAttributesDto>>(resourceObjects, pagedCoverArts.Total, request.Offset, request.Limit);
         }
     }
 } 

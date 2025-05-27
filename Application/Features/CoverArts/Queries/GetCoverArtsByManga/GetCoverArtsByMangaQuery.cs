@@ -1,10 +1,11 @@
 using Application.Common.DTOs;
 using Application.Common.DTOs.CoverArts;
+using Application.Common.Models;
 using MediatR;
 
 namespace Application.Features.CoverArts.Queries.GetCoverArtsByManga
 {
-    public class GetCoverArtsByMangaQuery : IRequest<PagedResult<CoverArtDto>>
+    public class GetCoverArtsByMangaQuery : IRequest<PagedResult<ResourceObject<CoverArtAttributesDto>>>
     {
         public Guid MangaId { get; set; }
         public int Offset { get; set; } = 0;

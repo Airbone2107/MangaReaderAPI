@@ -1,5 +1,5 @@
-using Application.Common.DTOs;
 using Application.Common.DTOs.TranslatedMangas;
+using Application.Common.Models; // For ResourceObject
 using Application.Common.Responses;
 using Application.Exceptions;
 using Application.Features.TranslatedMangas.Commands.CreateTranslatedManga;
@@ -32,7 +32,7 @@ namespace MangaReaderDB.Controllers
         }
 
         [HttpPost]
-        [ProducesResponseType(typeof(ApiResponse<TranslatedMangaDto>), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(ApiResponse<ResourceObject<TranslatedMangaAttributesDto>>), StatusCodes.Status201Created)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)] 
         public async Task<IActionResult> CreateTranslatedManga([FromBody] CreateTranslatedMangaDto createDto)
@@ -50,33 +50,34 @@ namespace MangaReaderDB.Controllers
                 Title = createDto.Title,
                 Description = createDto.Description
             };
-            var id = await Mediator.Send(command);
-            var translatedMangaDto = await Mediator.Send(new GetTranslatedMangaByIdQuery { TranslatedMangaId = id });
+            var translatedMangaId = await Mediator.Send(command);
+            var translatedMangaResource = await Mediator.Send(new GetTranslatedMangaByIdQuery { TranslatedMangaId = translatedMangaId });
             
-            if(translatedMangaDto == null)
+            if(translatedMangaResource == null)
             {
-                _logger.LogError($"FATAL: TranslatedManga with ID {id} was not found after creation! This indicates a critical issue.");
-                throw new InvalidOperationException($"Could not retrieve TranslatedManga with ID {id} after creation. This is an unexpected error.");
+                _logger.LogError($"FATAL: TranslatedManga with ID {translatedMangaId} was not found after creation!");
+                 return StatusCode(StatusCodes.Status500InternalServerError, 
+                    new ApiErrorResponse(new ApiError(500, "Creation Error", "Failed to retrieve resource after creation.")));
             }
-            return Created(nameof(GetTranslatedMangaById), new { id }, translatedMangaDto);
+            return Created(nameof(GetTranslatedMangaById), new { id = translatedMangaId }, translatedMangaResource);
         }
 
         [HttpGet("{id:guid}")]
-        [ProducesResponseType(typeof(ApiResponse<TranslatedMangaDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<ResourceObject<TranslatedMangaAttributesDto>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetTranslatedMangaById(Guid id)
         {
             var query = new GetTranslatedMangaByIdQuery { TranslatedMangaId = id };
-            var result = await Mediator.Send(query);
-            if (result == null)
+            var translatedMangaResource = await Mediator.Send(query);
+            if (translatedMangaResource == null)
             {
                  throw new NotFoundException(nameof(Domain.Entities.TranslatedManga), id);
             }
-            return Ok(result);
+            return Ok(translatedMangaResource);
         }
 
         [HttpGet("/mangas/{mangaId:guid}/translations")] 
-        [ProducesResponseType(typeof(ApiCollectionResponse<TranslatedMangaDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiCollectionResponse<ResourceObject<TranslatedMangaAttributesDto>>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetTranslatedMangasByManga(Guid mangaId, [FromQuery] GetTranslatedMangasByMangaQuery query)
         {
             query.MangaId = mangaId;

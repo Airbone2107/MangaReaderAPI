@@ -1,6 +1,7 @@
 // MangaReaderDB/Controllers/AuthorsController.cs
 using Application.Common.DTOs;
 using Application.Common.DTOs.Authors;
+using Application.Common.Models; // For ResourceObject
 using Application.Common.Responses; // Cần cho ApiResponse, ApiCollectionResponse, ApiErrorResponse
 using Application.Exceptions; // Cần cho NotFoundException, ValidationException
 using Application.Features.Authors.Commands.CreateAuthor;
@@ -11,6 +12,7 @@ using Application.Features.Authors.Queries.GetAuthors;
 using FluentValidation;
 using MediatR; // For Unit
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using System.Linq; // Required for .Select on validationResult.Errors
 
 namespace MangaReaderDB.Controllers
@@ -19,24 +21,26 @@ namespace MangaReaderDB.Controllers
     {
         private readonly IValidator<CreateAuthorDto> _createAuthorDtoValidator;
         private readonly IValidator<UpdateAuthorDto> _updateAuthorDtoValidator;
+        private readonly ILogger<AuthorsController> _logger;
 
         public AuthorsController(
             IValidator<CreateAuthorDto> createAuthorDtoValidator,
-            IValidator<UpdateAuthorDto> updateAuthorDtoValidator)
+            IValidator<UpdateAuthorDto> updateAuthorDtoValidator,
+            ILogger<AuthorsController> logger)
         {
             _createAuthorDtoValidator = createAuthorDtoValidator;
             _updateAuthorDtoValidator = updateAuthorDtoValidator;
+            _logger = logger;
         }
 
         [HttpPost]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status201Created)] // Trả về object chứa AuthorId
+        [ProducesResponseType(typeof(ApiResponse<ResourceObject<AuthorAttributesDto>>), StatusCodes.Status201Created)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> CreateAuthor([FromBody] CreateAuthorDto createAuthorDto)
         {
             var validationResult = await _createAuthorDtoValidator.ValidateAsync(createAuthorDto);
             if (!validationResult.IsValid)
             {
-                // Để ExceptionMiddleware xử lý
                 throw new Application.Exceptions.ValidationException(validationResult.Errors);
             }
 
@@ -47,34 +51,35 @@ namespace MangaReaderDB.Controllers
             };
             var authorId = await Mediator.Send(command);
             
-            // Lấy thông tin author vừa tạo để trả về (hoặc chỉ trả về ID nếu quy ước API cho phép)
-            var authorDto = await Mediator.Send(new GetAuthorByIdQuery { AuthorId = authorId });
-            if (authorDto == null) // Trường hợp hiếm, nhưng để đảm bảo
+            var authorResource = await Mediator.Send(new GetAuthorByIdQuery { AuthorId = authorId });
+            if (authorResource == null)
             {
-                 return Created(nameof(GetAuthorById), new { id = authorId }, new { AuthorId = authorId });
+                 _logger.LogError($"FATAL: Author with ID {authorId} was not found after creation!");
+                 return StatusCode(StatusCodes.Status500InternalServerError, 
+                    new ApiErrorResponse(new ApiError(500, "Creation Error", "Failed to retrieve resource after creation.")));
             }
-            return Created(nameof(GetAuthorById), new { id = authorId }, authorDto);
+            return Created(nameof(GetAuthorById), new { id = authorId }, authorResource);
         }
 
         [HttpGet("{id:guid}")]
-        [ProducesResponseType(typeof(ApiResponse<AuthorDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<ResourceObject<AuthorAttributesDto>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetAuthorById(Guid id)
         {
             var query = new GetAuthorByIdQuery { AuthorId = id };
-            var author = await Mediator.Send(query);
-            if (author == null)
+            var authorResource = await Mediator.Send(query);
+            if (authorResource == null)
             {
                 throw new NotFoundException(nameof(Domain.Entities.Author), id);
             }
-            return Ok(author);
+            return Ok(authorResource);
         }
 
         [HttpGet]
-        [ProducesResponseType(typeof(ApiCollectionResponse<AuthorDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiCollectionResponse<ResourceObject<AuthorAttributesDto>>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAuthors([FromQuery] GetAuthorsQuery query)
         {
-            var result = await Mediator.Send(query);
+            var result = await Mediator.Send(query); // QueryHandler trả về PagedResult<ResourceObject<AuthorAttributesDto>>
             return Ok(result);
         }
 
@@ -96,9 +101,8 @@ namespace MangaReaderDB.Controllers
                 Name = updateAuthorDto.Name,
                 Biography = updateAuthorDto.Biography
             };
-            // UpdateAuthorCommandHandler sẽ throw NotFoundException nếu không tìm thấy
             await Mediator.Send(command); 
-            return NoContent(); // Hoặc return OkResponseForAction(); nếu muốn có body {"result":"ok"}
+            return NoContent();
         }
 
         [HttpDelete("{id:guid}")]
@@ -107,9 +111,8 @@ namespace MangaReaderDB.Controllers
         public async Task<IActionResult> DeleteAuthor(Guid id)
         {
             var command = new DeleteAuthorCommand { AuthorId = id };
-            // DeleteAuthorCommandHandler sẽ throw NotFoundException nếu không tìm thấy
             await Mediator.Send(command);
-            return NoContent(); // Hoặc return OkResponseForAction();
+            return NoContent();
         }
     }
 } 

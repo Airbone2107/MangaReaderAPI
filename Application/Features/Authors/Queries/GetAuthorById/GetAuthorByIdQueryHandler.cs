@@ -1,13 +1,14 @@
 using Application.Common.DTOs.Authors;
+using Application.Common.Models;
 using Application.Contracts.Persistence;
-using Application.Exceptions;
 using AutoMapper;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using Domain.Entities; // Cần cho Author
 
 namespace Application.Features.Authors.Queries.GetAuthorById
 {
-    public class GetAuthorByIdQueryHandler : IRequestHandler<GetAuthorByIdQuery, AuthorDto?>
+    public class GetAuthorByIdQueryHandler : IRequestHandler<GetAuthorByIdQuery, ResourceObject<AuthorAttributesDto>?>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
@@ -20,20 +21,48 @@ namespace Application.Features.Authors.Queries.GetAuthorById
             _logger = logger;
         }
 
-        public async Task<AuthorDto?> Handle(GetAuthorByIdQuery request, CancellationToken cancellationToken)
+        public async Task<ResourceObject<AuthorAttributesDto>?> Handle(GetAuthorByIdQuery request, CancellationToken cancellationToken)
         {
             _logger.LogInformation("GetAuthorByIdQueryHandler.Handle - Lấy tác giả với ID: {AuthorId}", request.AuthorId);
-            var author = await _unitOfWork.AuthorRepository.GetByIdAsync(request.AuthorId);
+            
+            var author = await _unitOfWork.AuthorRepository.FindFirstOrDefaultAsync(
+                a => a.AuthorId == request.AuthorId,
+                includeProperties: "MangaAuthors.Manga" 
+            );
 
             if (author == null)
             {
                 _logger.LogWarning("Không tìm thấy tác giả với ID: {AuthorId}", request.AuthorId);
-                // Theo quy ước hiện tại, Query Handler trả về null nếu không tìm thấy.
-                // Controller sẽ quyết định trả về 404 Not Found.
-                return null; 
+                return null;
             }
 
-            return _mapper.Map<AuthorDto>(author);
+            var authorAttributes = _mapper.Map<AuthorAttributesDto>(author);
+            var relationships = new List<RelationshipObject>();
+
+            if (author.MangaAuthors != null)
+            {
+                foreach (var mangaAuthor in author.MangaAuthors)
+                {
+                    if (mangaAuthor.Manga != null)
+                    {
+                         relationships.Add(new RelationshipObject
+                        {
+                            Id = mangaAuthor.Manga.MangaId.ToString(),
+                            Type = "manga" 
+                        });
+                    }
+                }
+            }
+
+            var resourceObject = new ResourceObject<AuthorAttributesDto>
+            {
+                Id = author.AuthorId.ToString(),
+                Type = "author",
+                Attributes = authorAttributes,
+                Relationships = relationships.Any() ? relationships : null
+            };
+            
+            return resourceObject;
         }
     }
 } 

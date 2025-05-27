@@ -1,6 +1,7 @@
 // MangaReaderDB/Controllers/TagsController.cs
 using Application.Common.DTOs;
 using Application.Common.DTOs.Tags;
+using Application.Common.Models; // For ResourceObject
 using Application.Common.Responses;
 using Application.Exceptions;
 using Application.Features.Tags.Commands.CreateTag;
@@ -33,7 +34,7 @@ namespace MangaReaderDB.Controllers
         }
 
         [HttpPost]
-        [ProducesResponseType(typeof(ApiResponse<TagDto>), StatusCodes.Status201Created)] // Sửa ProducesResponseType
+        [ProducesResponseType(typeof(ApiResponse<ResourceObject<TagAttributesDto>>), StatusCodes.Status201Created)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)] 
         public async Task<IActionResult> CreateTag([FromBody] CreateTagDto createDto)
@@ -45,33 +46,34 @@ namespace MangaReaderDB.Controllers
             }
 
             var command = new CreateTagCommand { Name = createDto.Name, TagGroupId = createDto.TagGroupId };
-            var id = await Mediator.Send(command);
-            var tagDto = await Mediator.Send(new GetTagByIdQuery { TagId = id });
+            var tagId = await Mediator.Send(command);
+            var tagResource = await Mediator.Send(new GetTagByIdQuery { TagId = tagId });
             
-            if (tagDto == null)
+            if (tagResource == null)
             {
-                _logger.LogError($"FATAL: Tag with ID {id} was not found after creation! This indicates a critical issue.");
-                throw new InvalidOperationException($"Could not retrieve Tag with ID {id} after creation. This is an unexpected error.");
+                _logger.LogError($"FATAL: Tag with ID {tagId} was not found after creation!");
+                 return StatusCode(StatusCodes.Status500InternalServerError, 
+                    new ApiErrorResponse(new ApiError(500, "Creation Error", "Failed to retrieve resource after creation.")));
             }
-            return Created(nameof(GetTagById), new { id }, tagDto);
+            return Created(nameof(GetTagById), new { id = tagId }, tagResource);
         }
 
         [HttpGet("{id:guid}")]
-        [ProducesResponseType(typeof(ApiResponse<TagDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<ResourceObject<TagAttributesDto>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetTagById(Guid id)
         {
             var query = new GetTagByIdQuery { TagId = id };
-            var result = await Mediator.Send(query);
-            if (result == null)
+            var tagResource = await Mediator.Send(query);
+            if (tagResource == null)
             {
                 throw new NotFoundException(nameof(Domain.Entities.Tag), id);
             }
-            return Ok(result);
+            return Ok(tagResource);
         }
 
         [HttpGet]
-        [ProducesResponseType(typeof(ApiCollectionResponse<TagDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiCollectionResponse<ResourceObject<TagAttributesDto>>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetTags([FromQuery] GetTagsQuery query)
         {
             var result = await Mediator.Send(query);
@@ -91,7 +93,6 @@ namespace MangaReaderDB.Controllers
             }
 
             var command = new UpdateTagCommand { TagId = id, Name = updateDto.Name, TagGroupId = updateDto.TagGroupId };
-            // Handler sẽ throw NotFoundException hoặc ValidationException
             await Mediator.Send(command);
             return NoContent();
         }
@@ -102,7 +103,6 @@ namespace MangaReaderDB.Controllers
         public async Task<IActionResult> DeleteTag(Guid id)
         {
             var command = new DeleteTagCommand { TagId = id };
-            // Handler sẽ throw NotFoundException
             await Mediator.Send(command);
             return NoContent();
         }

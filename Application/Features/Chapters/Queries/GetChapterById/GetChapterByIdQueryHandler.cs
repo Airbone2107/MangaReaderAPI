@@ -1,12 +1,14 @@
 using Application.Common.DTOs.Chapters;
+using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using Domain.Entities;
 
 namespace Application.Features.Chapters.Queries.GetChapterById
 {
-    public class GetChapterByIdQueryHandler : IRequestHandler<GetChapterByIdQuery, ChapterDto?>
+    public class GetChapterByIdQueryHandler : IRequestHandler<GetChapterByIdQuery, ResourceObject<ChapterAttributesDto>?>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
@@ -19,15 +21,13 @@ namespace Application.Features.Chapters.Queries.GetChapterById
             _logger = logger;
         }
 
-        public async Task<ChapterDto?> Handle(GetChapterByIdQuery request, CancellationToken cancellationToken)
+        public async Task<ResourceObject<ChapterAttributesDto>?> Handle(GetChapterByIdQuery request, CancellationToken cancellationToken)
         {
             _logger.LogInformation("GetChapterByIdQueryHandler.Handle - Lấy chapter với ID: {ChapterId}", request.ChapterId);
             
-            // Cần include User và ChapterPages cho mapping ChapterDto
-            // Sử dụng FindFirstOrDefaultAsync để bao gồm các navigation properties
             var chapter = await _unitOfWork.ChapterRepository.FindFirstOrDefaultAsync(
                 predicate: c => c.ChapterId == request.ChapterId,
-                includeProperties: "User,ChapterPages" // Bao gồm User và ChapterPages
+                includeProperties: "User,ChapterPages,TranslatedManga.Manga" 
             );
 
             if (chapter == null)
@@ -36,18 +36,34 @@ namespace Application.Features.Chapters.Queries.GetChapterById
                 return null;
             }
             
-            // AutoMapper sẽ tự động map Chapter sang ChapterDto.
-            // Đảm bảo MappingProfile đã cấu hình để map User sang UserDto và ChapterPages sang List<ChapterPageDto>,
-            // và sắp xếp ChapterPages theo PageNumber.
-            // Ví dụ trong MappingProfile:
-            // CreateMap<Chapter, ChapterDto>()
-            //     .ForMember(dest => dest.Uploader, opt => opt.MapFrom(src => src.User))
-            //     .ForMember(dest => dest.PagesCount, opt => opt.MapFrom(src => src.ChapterPages.Count))
-            //     .ForMember(dest => dest.ChapterPages, opt => opt.MapFrom(src => src.ChapterPages.OrderBy(p => p.PageNumber)));
-            // CreateMap<User, UserDto>();
-            // CreateMap<ChapterPage, ChapterPageDto>();
+            var attributes = _mapper.Map<ChapterAttributesDto>(chapter);
+            var relationships = new List<RelationshipObject>();
 
-            return _mapper.Map<ChapterDto>(chapter);
+            if (chapter.User != null)
+            {
+                relationships.Add(new RelationshipObject
+                {
+                    Id = chapter.User.UserId.ToString(),
+                    Type = "user" 
+                });
+            }
+            
+            if (chapter.TranslatedManga?.Manga != null) 
+            {
+                 relationships.Add(new RelationshipObject
+                {
+                    Id = chapter.TranslatedManga.Manga.MangaId.ToString(),
+                    Type = "manga"
+                });
+            }
+            
+            return new ResourceObject<ChapterAttributesDto>
+            {
+                Id = chapter.ChapterId.ToString(),
+                Type = "chapter",
+                Attributes = attributes,
+                Relationships = relationships.Any() ? relationships : null
+            };
         }
     }
 } 

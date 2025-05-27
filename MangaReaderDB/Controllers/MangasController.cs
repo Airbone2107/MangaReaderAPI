@@ -1,5 +1,5 @@
-using Application.Common.DTOs;
 using Application.Common.DTOs.Mangas;
+using Application.Common.Models; // For ResourceObject
 using Application.Common.Responses;
 using Application.Exceptions;
 using Application.Features.Mangas.Commands.AddMangaAuthor;
@@ -39,7 +39,7 @@ namespace MangaReaderDB.Controllers
         }
 
         [HttpPost]
-        [ProducesResponseType(typeof(ApiResponse<MangaDto>), StatusCodes.Status201Created)] // Sửa ProducesResponseType
+        [ProducesResponseType(typeof(ApiResponse<ResourceObject<MangaAttributesDto>>), StatusCodes.Status201Created)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> CreateManga([FromBody] CreateMangaDto createDto)
         {
@@ -58,33 +58,34 @@ namespace MangaReaderDB.Controllers
                 Year = createDto.Year,
                 ContentRating = createDto.ContentRating
             };
-            var id = await Mediator.Send(command);
-            var mangaDto = await Mediator.Send(new GetMangaByIdQuery { MangaId = id });
+            var mangaId = await Mediator.Send(command);
+            var mangaResource = await Mediator.Send(new GetMangaByIdQuery { MangaId = mangaId });
 
-            if (mangaDto == null)
+            if (mangaResource == null)
             {
-                 _logger.LogError($"FATAL: Manga with ID {id} was not found after creation! This indicates a critical issue.");
-                 throw new InvalidOperationException($"Could not retrieve Manga with ID {id} after creation. This is an unexpected error.");
+                 _logger.LogError($"FATAL: Manga with ID {mangaId} was not found after creation!");
+                 return StatusCode(StatusCodes.Status500InternalServerError, 
+                    new ApiErrorResponse(new ApiError(500, "Creation Error", "Failed to retrieve resource after creation.")));
             }
-            return Created(nameof(GetMangaById), new { id }, mangaDto);
+            return Created(nameof(GetMangaById), new { id = mangaId }, mangaResource);
         }
 
         [HttpGet("{id:guid}")]
-        [ProducesResponseType(typeof(ApiResponse<MangaDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<ResourceObject<MangaAttributesDto>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetMangaById(Guid id)
         {
             var query = new GetMangaByIdQuery { MangaId = id };
-            var result = await Mediator.Send(query);
-            if (result == null)
+            var mangaResource = await Mediator.Send(query);
+            if (mangaResource == null)
             {
                 throw new NotFoundException(nameof(Domain.Entities.Manga), id);
             }
-            return Ok(result);
+            return Ok(mangaResource);
         }
 
         [HttpGet]
-        [ProducesResponseType(typeof(ApiCollectionResponse<MangaDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiCollectionResponse<ResourceObject<MangaAttributesDto>>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetMangas([FromQuery] GetMangasQuery query)
         {
             var result = await Mediator.Send(query);

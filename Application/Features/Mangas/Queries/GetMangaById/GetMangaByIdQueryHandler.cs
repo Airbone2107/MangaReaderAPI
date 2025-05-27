@@ -1,12 +1,15 @@
 using Application.Common.DTOs.Mangas;
+using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using Domain.Entities;
+using Domain.Enums;
 
 namespace Application.Features.Mangas.Queries.GetMangaById
 {
-    public class GetMangaByIdQueryHandler : IRequestHandler<GetMangaByIdQuery, MangaDto?>
+    public class GetMangaByIdQueryHandler : IRequestHandler<GetMangaByIdQuery, ResourceObject<MangaAttributesDto>?>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
@@ -19,12 +22,10 @@ namespace Application.Features.Mangas.Queries.GetMangaById
             _logger = logger;
         }
 
-        public async Task<MangaDto?> Handle(GetMangaByIdQuery request, CancellationToken cancellationToken)
+        public async Task<ResourceObject<MangaAttributesDto>?> Handle(GetMangaByIdQuery request, CancellationToken cancellationToken)
         {
             _logger.LogInformation("GetMangaByIdQueryHandler.Handle - Lấy manga với ID: {MangaId}", request.MangaId);
             
-            // Sử dụng phương thức GetMangaWithDetailsAsync từ MangaRepository
-            // Phương thức này đã được thiết kế để eager load các navigation properties cần thiết cho MangaDto.
             var manga = await _unitOfWork.MangaRepository.GetMangaWithDetailsAsync(request.MangaId);
 
             if (manga == null)
@@ -33,19 +34,58 @@ namespace Application.Features.Mangas.Queries.GetMangaById
                 return null;
             }
 
-            // AutoMapper sẽ tự động map Manga và các collection đã được load
-            // sang MangaDto và các DTO tương ứng (TagDto, AuthorDto, CoverArtDto, TranslatedMangaDto).
-            // Đảm bảo MappingProfile đã cấu hình đúng cho các mối quan hệ này.
-            // Ví dụ:
-            // CreateMap<Manga, MangaDto>()
-            //     .ForMember(dest => dest.Tags, opt => opt.MapFrom(src => src.MangaTags.Select(mt => mt.Tag)))
-            //     .ForMember(dest => dest.Authors, opt => opt.MapFrom(src => src.MangaAuthors.Select(ma => ma.Author)))
-            //     ...
-            // CreateMap<Tag, TagDto>();
-            // CreateMap<Author, AuthorDto>();
-            // ...
+            var mangaAttributes = _mapper.Map<MangaAttributesDto>(manga);
+            var relationships = new List<RelationshipObject>();
+
+            if (manga.MangaAuthors != null)
+            {
+                foreach (var mangaAuthor in manga.MangaAuthors)
+                {
+                    if (mangaAuthor.Author != null)
+                    {
+                        relationships.Add(new RelationshipObject
+                        {
+                            Id = mangaAuthor.Author.AuthorId.ToString(),
+                            Type = mangaAuthor.Role == MangaStaffRole.Author ? "author" : "artist"
+                        });
+                    }
+                }
+            }
+
+            if (manga.MangaTags != null)
+            {
+                foreach (var mangaTag in manga.MangaTags)
+                {
+                    if (mangaTag.Tag != null)
+                    {
+                        relationships.Add(new RelationshipObject
+                        {
+                            Id = mangaTag.Tag.TagId.ToString(),
+                            Type = "tag" 
+                        });
+                    }
+                }
+            }
             
-            return _mapper.Map<MangaDto>(manga);
+            var primaryCover = manga.CoverArts?.FirstOrDefault(); 
+            if (primaryCover != null)
+            {
+                relationships.Add(new RelationshipObject
+                {
+                    Id = primaryCover.CoverId.ToString(),
+                    Type = "cover_art"
+                });
+            }
+            
+            var resourceObject = new ResourceObject<MangaAttributesDto>
+            {
+                Id = manga.MangaId.ToString(),
+                Type = "manga",
+                Attributes = mangaAttributes,
+                Relationships = relationships.Any() ? relationships : null
+            };
+            
+            return resourceObject;
         }
     }
 } 

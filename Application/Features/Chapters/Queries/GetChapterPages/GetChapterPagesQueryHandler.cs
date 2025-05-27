@@ -1,5 +1,6 @@
 using Application.Common.DTOs;
 using Application.Common.DTOs.Chapters;
+using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
 using Domain.Entities; // Cần cho ChapterPage
@@ -9,7 +10,7 @@ using System.Linq.Expressions; // Cần cho Expression
 
 namespace Application.Features.Chapters.Queries.GetChapterPages
 {
-    public class GetChapterPagesQueryHandler : IRequestHandler<GetChapterPagesQuery, PagedResult<ChapterPageDto>>
+    public class GetChapterPagesQueryHandler : IRequestHandler<GetChapterPagesQuery, PagedResult<ResourceObject<ChapterPageAttributesDto>>>
     {
         private readonly IUnitOfWork _unitOfWork; // Sẽ dùng ChapterRepository
         private readonly IMapper _mapper;
@@ -22,7 +23,7 @@ namespace Application.Features.Chapters.Queries.GetChapterPages
             _logger = logger;
         }
 
-        public async Task<PagedResult<ChapterPageDto>> Handle(GetChapterPagesQuery request, CancellationToken cancellationToken)
+        public async Task<PagedResult<ResourceObject<ChapterPageAttributesDto>>> Handle(GetChapterPagesQuery request, CancellationToken cancellationToken)
         {
             _logger.LogInformation("GetChapterPagesQueryHandler.Handle - Lấy các trang cho ChapterId: {ChapterId}, Offset: {Offset}, Limit: {Limit}",
                 request.ChapterId, request.Offset, request.Limit);
@@ -32,7 +33,7 @@ namespace Application.Features.Chapters.Queries.GetChapterPages
             if (!chapterExists)
             {
                 _logger.LogWarning("Không tìm thấy Chapter với ID: {ChapterId} khi lấy danh sách trang.", request.ChapterId);
-                return new PagedResult<ChapterPageDto>(new List<ChapterPageDto>(), 0, request.Offset, request.Limit);
+                return new PagedResult<ResourceObject<ChapterPageAttributesDto>>(new List<ResourceObject<ChapterPageAttributesDto>>(), 0, request.Offset, request.Limit);
             }
             
             // TODO: [Improvement] Hiện tại, IChapterRepository không có phương thức GetPagedAsync cho ChapterPage.
@@ -58,7 +59,7 @@ namespace Application.Features.Chapters.Queries.GetChapterPages
             if (chapterWithPages == null || chapterWithPages.ChapterPages == null)
             {
                  _logger.LogWarning("Chapter with ID {ChapterId} found but has no pages.", request.ChapterId);
-                 return new PagedResult<ChapterPageDto>(new List<ChapterPageDto>(), 0, request.Offset, request.Limit);
+                 return new PagedResult<ResourceObject<ChapterPageAttributesDto>>(new List<ResourceObject<ChapterPageAttributesDto>>(), 0, request.Offset, request.Limit);
             }
 
             var allPages = chapterWithPages.ChapterPages.OrderBy(p => p.PageNumber).ToList(); // Lấy tất cả trang và sắp xếp
@@ -69,8 +70,22 @@ namespace Application.Features.Chapters.Queries.GetChapterPages
                                 .Take(request.Limit)
                                 .ToList();
 
-            var pageDtos = _mapper.Map<List<ChapterPageDto>>(items);
-            return new PagedResult<ChapterPageDto>(pageDtos, totalCount, request.Offset, request.Limit);
+            var resourceObjects = items.Select(page => {
+                var attributes = _mapper.Map<ChapterPageAttributesDto>(page);
+                var relationships = new List<RelationshipObject>
+                {
+                    new RelationshipObject { Id = page.ChapterId.ToString(), Type = "chapter" }
+                };
+                return new ResourceObject<ChapterPageAttributesDto>
+                {
+                    Id = page.PageId.ToString(),
+                    Type = "chapter_page", 
+                    Attributes = attributes,
+                    Relationships = relationships // ChapterPage always has a relationship to chapter
+                };
+            }).ToList();
+            
+            return new PagedResult<ResourceObject<ChapterPageAttributesDto>>(resourceObjects, totalCount, request.Offset, request.Limit);
         }
     }
 } 

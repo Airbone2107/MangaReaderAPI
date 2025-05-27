@@ -1,5 +1,5 @@
 using Application.Common.DTOs.TranslatedMangas;
-using Application.Common.DTOs.Chapters; // Cần nếu IncludeChapters=true
+using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
 using MediatR;
@@ -8,7 +8,7 @@ using Domain.Entities; // Cần cho TranslatedManga
 
 namespace Application.Features.TranslatedMangas.Queries.GetTranslatedMangaById
 {
-    public class GetTranslatedMangaByIdQueryHandler : IRequestHandler<GetTranslatedMangaByIdQuery, TranslatedMangaDto?>
+    public class GetTranslatedMangaByIdQueryHandler : IRequestHandler<GetTranslatedMangaByIdQuery, ResourceObject<TranslatedMangaAttributesDto>?>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
@@ -21,17 +21,16 @@ namespace Application.Features.TranslatedMangas.Queries.GetTranslatedMangaById
             _logger = logger;
         }
 
-        public async Task<TranslatedMangaDto?> Handle(GetTranslatedMangaByIdQuery request, CancellationToken cancellationToken)
+        public async Task<ResourceObject<TranslatedMangaAttributesDto>?> Handle(GetTranslatedMangaByIdQuery request, CancellationToken cancellationToken)
         {
             _logger.LogInformation("GetTranslatedMangaByIdQueryHandler.Handle - Lấy translated manga với ID: {TranslatedMangaId}", request.TranslatedMangaId);
             
-            // TODO: [Improvement] Nếu Query có tùy chọn IncludeChapters, sử dụng FindFirstOrDefaultAsync với includeProperties: "Chapters"
-            // ITagGroupRepository.GetTagGroupWithTagsAsync là một ví dụ về cách tạo phương thức repo để include.
-            // Nên tạo một phương thức tương tự trong ITranslatedMangaRepository và TranslatedMangaRepository
-            // Task<TranslatedManga?> GetByIdWithChaptersAsync(Guid translatedMangaId);
-            // Sau đó gọi ở đây nếu IncludeChapters = true.
-            
-            var translatedManga = await _unitOfWork.TranslatedMangaRepository.GetByIdAsync(request.TranslatedMangaId);
+            string includeProps = "Manga"; 
+
+            var translatedManga = await _unitOfWork.TranslatedMangaRepository.FindFirstOrDefaultAsync(
+                tm => tm.TranslatedMangaId == request.TranslatedMangaId,
+                includeProperties: includeProps
+            );
 
             if (translatedManga == null)
             {
@@ -39,12 +38,25 @@ namespace Application.Features.TranslatedMangas.Queries.GetTranslatedMangaById
                 return null;
             }
             
-            // TODO: [Improvement] Nếu Query có tùy chọn IncludeChapters VÀ TranslatedMangaDto được cập nhật để chứa List<ChapterDto>,
-            // cần đảm bảo mapping profile xử lý việc map TranslatedManga.Chapters sang TranslatedMangaDto.Chapters.
-            // MappingProfile hiện tại chỉ map TranslatedManga -> TranslatedMangaDto mà không có property Chapters.
-            // Nếu cập nhật TranslatedMangaDto và MappingProfile, phần này sẽ tự động hoạt động khi TranslatedManga entity đã load Chapters.
+            var attributes = _mapper.Map<TranslatedMangaAttributesDto>(translatedManga);
+            var relationships = new List<RelationshipObject>();
 
-            return _mapper.Map<TranslatedMangaDto>(translatedManga);
+            if (translatedManga.Manga != null)
+            {
+                relationships.Add(new RelationshipObject 
+                { 
+                    Id = translatedManga.Manga.MangaId.ToString(), 
+                    Type = "manga" 
+                });
+            }
+
+            return new ResourceObject<TranslatedMangaAttributesDto>
+            {
+                Id = translatedManga.TranslatedMangaId.ToString(),
+                Type = "translated_manga", 
+                Attributes = attributes,
+                Relationships = relationships.Any() ? relationships : null
+            };
         }
     }
 } 

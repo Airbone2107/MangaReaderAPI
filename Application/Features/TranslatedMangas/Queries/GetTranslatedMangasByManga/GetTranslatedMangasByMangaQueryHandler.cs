@@ -1,5 +1,6 @@
 using Application.Common.DTOs;
 using Application.Common.DTOs.TranslatedMangas;
+using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
 using Domain.Entities;
@@ -10,7 +11,7 @@ using Application.Common.Extensions;
 
 namespace Application.Features.TranslatedMangas.Queries.GetTranslatedMangasByManga
 {
-    public class GetTranslatedMangasByMangaQueryHandler : IRequestHandler<GetTranslatedMangasByMangaQuery, PagedResult<TranslatedMangaDto>>
+    public class GetTranslatedMangasByMangaQueryHandler : IRequestHandler<GetTranslatedMangasByMangaQuery, PagedResult<ResourceObject<TranslatedMangaAttributesDto>>>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
@@ -23,7 +24,7 @@ namespace Application.Features.TranslatedMangas.Queries.GetTranslatedMangasByMan
             _logger = logger;
         }
 
-        public async Task<PagedResult<TranslatedMangaDto>> Handle(GetTranslatedMangasByMangaQuery request, CancellationToken cancellationToken)
+        public async Task<PagedResult<ResourceObject<TranslatedMangaAttributesDto>>> Handle(GetTranslatedMangasByMangaQuery request, CancellationToken cancellationToken)
         {
             _logger.LogInformation("GetTranslatedMangasByMangaQueryHandler.Handle - Lấy translated mangas cho MangaId: {MangaId}", request.MangaId);
 
@@ -32,7 +33,7 @@ namespace Application.Features.TranslatedMangas.Queries.GetTranslatedMangasByMan
             if (!mangaExists)
             {
                 _logger.LogWarning("Không tìm thấy Manga với ID: {MangaId} khi lấy translated mangas.", request.MangaId);
-                return new PagedResult<TranslatedMangaDto>(new List<TranslatedMangaDto>(), 0, request.Offset, request.Limit);
+                return new PagedResult<ResourceObject<TranslatedMangaAttributesDto>>(new List<ResourceObject<TranslatedMangaAttributesDto>>(), 0, request.Offset, request.Limit);
             }
 
             // Build filter predicate
@@ -57,12 +58,28 @@ namespace Application.Features.TranslatedMangas.Queries.GetTranslatedMangasByMan
                 request.Offset,
                 request.Limit,
                 filter,
-                orderBy
-                // Không cần include gì đặc biệt cho TranslatedMangaDto hiện tại
+                orderBy,
+                includeProperties: "Manga" 
             );
 
-            var translatedMangaDtos = _mapper.Map<List<TranslatedMangaDto>>(pagedTranslatedMangas.Items);
-            return new PagedResult<TranslatedMangaDto>(translatedMangaDtos, pagedTranslatedMangas.Total, request.Offset, request.Limit);
+            var resourceObjects = new List<ResourceObject<TranslatedMangaAttributesDto>>();
+            foreach(var tm in pagedTranslatedMangas.Items)
+            {
+                var attributes = _mapper.Map<TranslatedMangaAttributesDto>(tm);
+                 var relationships = new List<RelationshipObject>();
+                if (tm.Manga != null)
+                {
+                    relationships.Add(new RelationshipObject { Id = tm.Manga.MangaId.ToString(), Type = "manga" });
+                }
+                resourceObjects.Add(new ResourceObject<TranslatedMangaAttributesDto>
+                {
+                    Id = tm.TranslatedMangaId.ToString(),
+                    Type = "translated_manga",
+                    Attributes = attributes,
+                    Relationships = relationships.Any() ? relationships : null
+                });
+            }
+            return new PagedResult<ResourceObject<TranslatedMangaAttributesDto>>(resourceObjects, pagedTranslatedMangas.Total, request.Offset, request.Limit);
         }
     }
 } 
