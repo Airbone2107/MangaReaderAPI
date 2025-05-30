@@ -2,21 +2,13 @@ using Application.Common.DTOs.Mangas;
 using Application.Common.Models; // For ResourceObject
 using Application.Common.Responses;
 using Application.Exceptions;
-using Application.Features.Mangas.Commands.AddMangaAuthor;
-using Application.Features.Mangas.Commands.AddMangaTag;
 using Application.Features.Mangas.Commands.CreateManga;
 using Application.Features.Mangas.Commands.DeleteManga;
-using Application.Features.Mangas.Commands.RemoveMangaAuthor;
-using Application.Features.Mangas.Commands.RemoveMangaTag;
 using Application.Features.Mangas.Commands.UpdateManga;
 using Application.Features.Mangas.Queries.GetMangaById;
 using Application.Features.Mangas.Queries.GetMangas;
-using Domain.Enums;
 using FluentValidation;
-using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using System.Linq; // Required for .Select on validationResult.Errors
-using Microsoft.Extensions.Logging; // Đảm bảo có using này
 
 namespace MangaReaderDB.Controllers
 {
@@ -25,8 +17,6 @@ namespace MangaReaderDB.Controllers
         private readonly IValidator<CreateMangaDto> _createMangaDtoValidator;
         private readonly IValidator<UpdateMangaDto> _updateMangaDtoValidator;
         private readonly ILogger<MangasController> _logger; // Thêm logger
-        // Nếu MangaTagInputDto và MangaAuthorInputDto có validator riêng, bạn cũng cần inject chúng.
-        // Hiện tại, chúng khá đơn giản và có thể validate trực tiếp trong action nếu cần.
 
         public MangasController(
             IValidator<CreateMangaDto> createMangaDtoValidator,
@@ -56,7 +46,9 @@ namespace MangaReaderDB.Controllers
                 PublicationDemographic = createDto.PublicationDemographic,
                 Status = createDto.Status,
                 Year = createDto.Year,
-                ContentRating = createDto.ContentRating
+                ContentRating = createDto.ContentRating,
+                TagIds = createDto.TagIds,
+                Authors = createDto.Authors
             };
             var mangaId = await Mediator.Send(command);
             var mangaResource = await Mediator.Send(new GetMangaByIdQuery { MangaId = mangaId });
@@ -113,7 +105,9 @@ namespace MangaReaderDB.Controllers
                 Status = updateDto.Status,
                 Year = updateDto.Year,
                 ContentRating = updateDto.ContentRating,
-                IsLocked = updateDto.IsLocked
+                IsLocked = updateDto.IsLocked,
+                TagIds = updateDto.TagIds,
+                Authors = updateDto.Authors
             };
             await Mediator.Send(command);
             return NoContent();
@@ -125,64 +119,6 @@ namespace MangaReaderDB.Controllers
         public async Task<IActionResult> DeleteManga(Guid id)
         {
             var command = new DeleteMangaCommand { MangaId = id };
-            await Mediator.Send(command);
-            return NoContent();
-        }
-
-        // --- Manga Tags ---
-        [HttpPost("{mangaId:guid}/tags")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> AddMangaTag(Guid mangaId, [FromBody] MangaTagInputDto input)
-        {
-            if (input.TagId == Guid.Empty) 
-            {
-                throw new Application.Exceptions.ValidationException(nameof(input.TagId), "TagId is required.");
-            }
-            var command = new AddMangaTagCommand { MangaId = mangaId, TagId = input.TagId };
-            // Handler sẽ throw NotFoundException nếu mangaId hoặc tagId không tồn tại
-            await Mediator.Send(command);
-            return NoContent();
-        }
-
-        [HttpDelete("{mangaId:guid}/tags/{tagId:guid}")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> RemoveMangaTag(Guid mangaId, Guid tagId)
-        {
-            var command = new RemoveMangaTagCommand { MangaId = mangaId, TagId = tagId };
-            // Handler sẽ throw NotFoundException nếu mangaId hoặc tagId không tồn tại, hoặc tag không được gán cho manga
-            await Mediator.Send(command);
-            return NoContent();
-        }
-
-        // --- Manga Authors ---
-        [HttpPost("{mangaId:guid}/authors")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> AddMangaAuthor(Guid mangaId, [FromBody] MangaAuthorInputDto input)
-        {
-            if (input.AuthorId == Guid.Empty)
-            {
-                 throw new Application.Exceptions.ValidationException(nameof(input.AuthorId), "AuthorId is required.");
-            }
-            if (!Enum.IsDefined(typeof(MangaStaffRole), input.Role))
-            {
-                throw new Application.Exceptions.ValidationException(nameof(input.Role), "Invalid Role.");
-            }
-            var command = new AddMangaAuthorCommand { MangaId = mangaId, AuthorId = input.AuthorId, Role = input.Role };
-            await Mediator.Send(command);
-            return NoContent();
-        }
-
-        [HttpDelete("{mangaId:guid}/authors/{authorId:guid}/role/{role}")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> RemoveMangaAuthor(Guid mangaId, Guid authorId, MangaStaffRole role)
-        {
-            var command = new RemoveMangaAuthorCommand { MangaId = mangaId, AuthorId = authorId, Role = role };
             await Mediator.Send(command);
             return NoContent();
         }

@@ -1,7 +1,5 @@
-using Application.Features.Mangas.Commands.UpdateManga;
 using Domain.Enums;
 using FluentValidation;
-using System;
 
 namespace Application.Features.Mangas.Commands.UpdateManga
 {
@@ -36,6 +34,18 @@ namespace Application.Features.Mangas.Commands.UpdateManga
                 .IsInEnum().WithMessage("Đánh giá nội dung không hợp lệ.");
             
             // IsLocked không cần validate đặc biệt vì là boolean
+            
+            RuleForEach(p => p.TagIds)
+                .NotEmpty().WithMessage("Tag ID không được rỗng.")
+                .When(p => p.TagIds != null && p.TagIds.Any());
+            
+            RuleForEach(p => p.Authors).ChildRules(authorRule =>
+            {
+                authorRule.RuleFor(a => a.AuthorId)
+                    .NotEmpty().WithMessage("Author ID không được rỗng.");
+                authorRule.RuleFor(a => a.Role)
+                    .IsInEnum().WithMessage("Author Role không hợp lệ.");
+            }).When(p => p.Authors != null && p.Authors.Any());
         }
     }
 } 

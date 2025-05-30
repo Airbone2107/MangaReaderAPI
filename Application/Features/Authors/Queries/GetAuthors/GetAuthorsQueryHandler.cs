@@ -7,7 +7,6 @@ using Domain.Entities;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using System.Linq.Expressions;
-using Application.Common.Extensions;
 
 namespace Application.Features.Authors.Queries.GetAuthors
 {

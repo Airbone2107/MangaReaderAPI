@@ -1,7 +1,6 @@
 using Application.Common.DTOs.Mangas;
 using Domain.Enums;
 using FluentValidation;
-using System;
 
 namespace Application.Validation.Mangas
 {

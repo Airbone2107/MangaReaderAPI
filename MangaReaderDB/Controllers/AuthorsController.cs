@@ -1,19 +1,15 @@
 // MangaReaderDB/Controllers/AuthorsController.cs
-using Application.Common.DTOs;
 using Application.Common.DTOs.Authors;
-using Application.Common.Models; // For ResourceObject
-using Application.Common.Responses; // Cần cho ApiResponse, ApiCollectionResponse, ApiErrorResponse
-using Application.Exceptions; // Cần cho NotFoundException, ValidationException
+using Application.Common.Models;
+using Application.Common.Responses;
+using Application.Exceptions;
 using Application.Features.Authors.Commands.CreateAuthor;
 using Application.Features.Authors.Commands.DeleteAuthor;
 using Application.Features.Authors.Commands.UpdateAuthor;
 using Application.Features.Authors.Queries.GetAuthorById;
 using Application.Features.Authors.Queries.GetAuthors;
 using FluentValidation;
-using MediatR; // For Unit
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
-using System.Linq; // Required for .Select on validationResult.Errors
 
 namespace MangaReaderDB.Controllers
 {

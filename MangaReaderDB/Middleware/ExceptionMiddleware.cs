@@ -1,13 +1,6 @@
 using Application.Common.Responses;
-using Application.Exceptions; // Namespace chứa NotFoundException, ValidationException, etc.
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Hosting; // Cho IHostEnvironment
-using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Text.Json;
-using System.Threading.Tasks;
 
 namespace MangaReaderDB.Middleware
 {

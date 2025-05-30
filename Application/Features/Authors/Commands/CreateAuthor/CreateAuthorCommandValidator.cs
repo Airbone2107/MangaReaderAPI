@@ -1,5 +1,3 @@
-using Application.Common.DTOs.Authors; // Nếu CreateAuthorCommand chứa CreateAuthorDto
-using Application.Features.Authors.Commands.CreateAuthor;
 using FluentValidation;
 
 namespace Application.Features.Authors.Commands.CreateAuthor

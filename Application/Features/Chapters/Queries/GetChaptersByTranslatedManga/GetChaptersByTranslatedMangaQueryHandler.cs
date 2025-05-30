@@ -5,10 +5,8 @@ using Application.Contracts.Persistence;
 using AutoMapper;
 using Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore; // Cần cho Include
 using Microsoft.Extensions.Logging;
 using System.Linq.Expressions;
-using Application.Common.Extensions;
 
 namespace Application.Features.Chapters.Queries.GetChaptersByTranslatedManga
 {

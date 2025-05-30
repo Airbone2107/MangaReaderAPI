@@ -3,7 +3,6 @@ using Application.Contracts.Persistence;
 using Application.Exceptions;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using System.Linq; // Cho ToList(), Any()
 
 namespace Application.Features.TranslatedMangas.Commands.DeleteTranslatedManga
 {

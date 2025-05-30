@@ -4,7 +4,6 @@ using Application.Contracts.Persistence;
 using AutoMapper;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using Domain.Entities; // Cần thiết cho FindFirstOrDefaultAsync
 
 namespace Application.Features.Tags.Queries.GetTagById
 {

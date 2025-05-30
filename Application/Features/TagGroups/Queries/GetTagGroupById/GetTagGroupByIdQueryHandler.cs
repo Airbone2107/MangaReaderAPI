@@ -2,9 +2,9 @@ using Application.Common.DTOs.TagGroups;
 using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
+using Domain.Entities; // Cần cho TagGroup
 using MediatR;
 using Microsoft.Extensions.Logging;
-using Domain.Entities; // Cần cho TagGroup
 
 namespace Application.Features.TagGroups.Queries.GetTagGroupById
 {

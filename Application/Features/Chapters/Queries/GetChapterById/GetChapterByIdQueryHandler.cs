@@ -4,7 +4,6 @@ using Application.Contracts.Persistence;
 using AutoMapper;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using Domain.Entities;
 
 namespace Application.Features.Chapters.Queries.GetChapterById
 {

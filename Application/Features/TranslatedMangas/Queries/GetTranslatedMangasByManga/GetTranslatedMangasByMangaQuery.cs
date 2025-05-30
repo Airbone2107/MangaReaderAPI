@@ -2,7 +2,6 @@ using Application.Common.DTOs;
 using Application.Common.DTOs.TranslatedMangas;
 using Application.Common.Models;
 using MediatR;
-using System; // Cần cho Guid
 
 namespace Application.Features.TranslatedMangas.Queries.GetTranslatedMangasByManga
 {

@@ -1,5 +1,4 @@
 using MediatR;
-using Microsoft.AspNetCore.Http; // Tạm thời
 
 namespace Application.Features.CoverArts.Commands.UploadCoverArtImage
 {

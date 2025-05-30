@@ -1,5 +1,4 @@
 using Domain.Enums;
-using System.Collections.Generic;
 
 namespace Application.Common.DTOs.Mangas
 {
@@ -11,6 +10,9 @@ namespace Application.Common.DTOs.Mangas
         public MangaStatus Status { get; set; }
         public int? Year { get; set; }
         public ContentRating ContentRating { get; set; }
+        
+        public List<Guid>? TagIds { get; set; }
+        public List<MangaAuthorInputDto>? Authors { get; set; }
         
         // Thông tin Tags và Authors sẽ được xử lý riêng qua các commands AddMangaTag/AddMangaAuthor
         // hoặc nếu muốn thêm ngay khi tạo Manga, thì Command tương ứng sẽ nhận danh sách ID.

@@ -8,10 +8,7 @@ using Application.Features.TagGroups.Commands.UpdateTagGroup;
 using Application.Features.TagGroups.Queries.GetTagGroupById;
 using Application.Features.TagGroups.Queries.GetTagGroups;
 using FluentValidation;
-using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using System.Linq; // Required for .Select on validationResult.Errors
-using Microsoft.Extensions.Logging; // Đảm bảo có using này
 
 namespace MangaReaderDB.Controllers
 {

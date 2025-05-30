@@ -2,7 +2,6 @@ using Application.Common.DTOs;
 using Application.Common.DTOs.Tags;
 using Application.Common.Models;
 using MediatR;
-using System; // Cần cho Guid?
 
 namespace Application.Features.Tags.Queries.GetTags
 {

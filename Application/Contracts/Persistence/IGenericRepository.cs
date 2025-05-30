@@ -1,5 +1,4 @@
 using Application.Common.DTOs;
-using Domain.Common;
 using System.Linq.Expressions;
 
 namespace Application.Contracts.Persistence

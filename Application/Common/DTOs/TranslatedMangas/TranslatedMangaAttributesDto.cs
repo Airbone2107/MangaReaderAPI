@@ -1,5 +1,3 @@
-using System;
-
 namespace Application.Common.DTOs.TranslatedMangas
 {
     public class TranslatedMangaAttributesDto

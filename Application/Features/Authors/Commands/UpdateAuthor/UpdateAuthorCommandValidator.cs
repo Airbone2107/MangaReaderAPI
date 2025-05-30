@@ -1,5 +1,3 @@
-using Application.Common.DTOs.Authors; // Nếu UpdateAuthorCommand chứa UpdateAuthorDto
-using Application.Features.Authors.Commands.UpdateAuthor;
 using FluentValidation;
 
 namespace Application.Features.Authors.Commands.UpdateAuthor

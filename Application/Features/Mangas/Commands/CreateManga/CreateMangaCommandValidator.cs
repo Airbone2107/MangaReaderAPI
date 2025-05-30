@@ -1,7 +1,5 @@
-using Application.Features.Mangas.Commands.CreateManga;
 using Domain.Enums;
 using FluentValidation;
-using System;
 
 namespace Application.Features.Mangas.Commands.CreateManga
 {
@@ -31,6 +29,18 @@ namespace Application.Features.Mangas.Commands.CreateManga
 
             RuleFor(p => p.ContentRating)
                 .IsInEnum().WithMessage("Đánh giá nội dung không hợp lệ.");
+                
+            RuleForEach(p => p.TagIds)
+                .NotEmpty().WithMessage("Tag ID không được rỗng.")
+                .When(p => p.TagIds != null && p.TagIds.Any());
+            
+            RuleForEach(p => p.Authors).ChildRules(authorRule =>
+            {
+                authorRule.RuleFor(a => a.AuthorId)
+                    .NotEmpty().WithMessage("Author ID không được rỗng.");
+                authorRule.RuleFor(a => a.Role)
+                    .IsInEnum().WithMessage("Author Role không hợp lệ.");
+            }).When(p => p.Authors != null && p.Authors.Any());
         }
     }
 } 

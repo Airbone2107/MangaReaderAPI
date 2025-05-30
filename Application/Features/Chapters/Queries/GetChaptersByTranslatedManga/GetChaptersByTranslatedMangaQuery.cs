@@ -2,7 +2,6 @@ using Application.Common.DTOs;
 using Application.Common.DTOs.Chapters;
 using Application.Common.Models;
 using MediatR;
-using System.Collections.Generic; // Cần cho List
 
 namespace Application.Features.Chapters.Queries.GetChaptersByTranslatedManga
 {

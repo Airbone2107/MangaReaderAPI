@@ -1,15 +1,14 @@
 using Application.Common.DTOs;
 using Application.Common.DTOs.Mangas;
+using Application.Common.Extensions; // Thêm using này
 using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
 using Domain.Entities;
 using Domain.Enums;
 using MediatR;
-using Microsoft.EntityFrameworkCore; // Cần cho Include và ThenInclude
 using Microsoft.Extensions.Logging;
 using System.Linq.Expressions; // Cần cho Expression
-using Application.Common.Extensions; // Thêm using này
 
 namespace Application.Features.Mangas.Queries.GetMangas
 {

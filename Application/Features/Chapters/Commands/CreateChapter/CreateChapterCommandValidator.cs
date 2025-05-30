@@ -1,4 +1,3 @@
-using Application.Features.Chapters.Commands.CreateChapter;
 using FluentValidation;
 
 namespace Application.Features.Chapters.Commands.CreateChapter

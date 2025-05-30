@@ -1,5 +1,4 @@
 using Application.Common.DTOs; // Cần cho PagedResult
-using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace Application.Common.Responses

@@ -12,5 +12,8 @@ namespace Application.Common.DTOs.Mangas
         public int? Year { get; set; }
         public ContentRating ContentRating { get; set; }
         public bool IsLocked { get; set; }
+
+        public List<Guid>? TagIds { get; set; }
+        public List<MangaAuthorInputDto>? Authors { get; set; }
     }
 } 

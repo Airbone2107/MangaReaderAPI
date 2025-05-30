@@ -1,14 +1,13 @@
 using Application.Common.DTOs;
 using Application.Common.DTOs.Tags;
+using Application.Common.Extensions;
 using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
 using Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Linq.Expressions;
-using Application.Common.Extensions;
 
 namespace Application.Features.Tags.Queries.GetTags
 {

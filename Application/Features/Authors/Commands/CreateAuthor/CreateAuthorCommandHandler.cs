@@ -1,4 +1,3 @@
-using Application.Common.Interfaces;
 using Application.Contracts.Persistence;
 using AutoMapper;
 using Domain.Entities;

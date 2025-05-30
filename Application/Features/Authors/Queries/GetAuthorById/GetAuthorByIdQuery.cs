@@ -1,5 +1,5 @@
 using Application.Common.DTOs.Authors;
-using Application.Common.Models; // Cho ResourceObject
+using Application.Common.Models;
 using MediatR;
 
 namespace Application.Features.Authors.Queries.GetAuthorById

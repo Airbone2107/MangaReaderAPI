@@ -14,7 +14,6 @@ using Application.Features.Chapters.Queries.GetChapterPages;
 using Application.Features.Chapters.Queries.GetChaptersByTranslatedManga;
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 
 namespace MangaReaderDB.Controllers
 {

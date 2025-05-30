@@ -1,4 +1,3 @@
-// Application/Validation/Chapters/UpdateChapterDtoValidator.cs
 using Application.Common.DTOs.Chapters;
 using FluentValidation;
 

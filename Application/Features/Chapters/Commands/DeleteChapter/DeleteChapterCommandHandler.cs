@@ -1,9 +1,8 @@
-using Application.Contracts.Persistence;
 using Application.Common.Interfaces; // Cho IPhotoAccessor
+using Application.Contracts.Persistence;
 using Application.Exceptions;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using Microsoft.EntityFrameworkCore; // Cho ToListAsync
 
 namespace Application.Features.Chapters.Commands.DeleteChapter
 {

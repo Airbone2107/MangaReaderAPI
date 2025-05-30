@@ -1,4 +1,3 @@
-using Application.Features.Tags.Commands.CreateTag;
 using FluentValidation;
 
 namespace Application.Features.Tags.Commands.CreateTag

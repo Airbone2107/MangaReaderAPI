@@ -2,10 +2,9 @@ using Application.Common.DTOs.Mangas;
 using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
+using Domain.Enums;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using Domain.Entities;
-using Domain.Enums;
 
 namespace Application.Features.Mangas.Queries.GetMangaById
 {

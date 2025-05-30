@@ -46,15 +46,14 @@ Dự án MangaReader API sử dụng các công nghệ và thư viện sau:
 *   **Visual Studio / Visual Studio Code**: Môi trường phát triển tích hợp (IDE).
 *   **Git**: Hệ thống quản lý phiên bản phân tán.
 *   **.NET CLI**: Công cụ dòng lệnh cho .NET.
-*   **SQL Server Management Studio (SSMS) / Azure Data Studio**: Công cụ quản lý và phát triển cơ sở dữ liệu SQL Server.
+*   **SQL Server Management Studio (SSMS)**: Công cụ quản lý và phát triển cơ sở dữ liệu SQL Server.
 
-## 9. Logging (Đề xuất)
+## 9. Logging
 
-*   **Microsoft.Extensions.Logging**: Thư viện logging tích hợp sẵn của ASP.NET Core.
-*   (Tùy chọn nâng cao) **Serilog / NLog**: Các thư viện logging mạnh mẽ, có cấu trúc, với nhiều sink đa dạng.
+*   **Microsoft.Extensions.Logging**: Thư viện logging tích hợp sẵn của ASP.NET Core (Sử dụng).
 
 ## 10. Configuration Management
 
 *   **appsettings.json**: File cấu hình chính.
 *   **User Secrets** (Development): Quản lý các thông tin nhạy cảm trong quá trình phát triển.
-*   **Environment Variables / Azure Key Vault** (Staging/Production): Quản lý cấu hình và thông tin nhạy cảm cho môi trường triển khai. 
+*   **Environment Variables** (Staging/Production): Quản lý cấu hình và thông tin nhạy cảm cho môi trường triển khai.

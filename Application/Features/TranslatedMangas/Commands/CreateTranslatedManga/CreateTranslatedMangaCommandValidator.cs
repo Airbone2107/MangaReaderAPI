@@ -1,4 +1,3 @@
-using Application.Features.TranslatedMangas.Commands.CreateTranslatedManga;
 using FluentValidation;
 
 namespace Application.Features.TranslatedMangas.Commands.CreateTranslatedManga

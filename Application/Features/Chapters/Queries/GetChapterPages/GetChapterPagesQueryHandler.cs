@@ -3,10 +3,8 @@ using Application.Common.DTOs.Chapters;
 using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
-using Domain.Entities; // Cần cho ChapterPage
 using MediatR;
 using Microsoft.Extensions.Logging;
-using System.Linq.Expressions; // Cần cho Expression
 
 namespace Application.Features.Chapters.Queries.GetChapterPages
 {

@@ -1,4 +1,3 @@
-using Application.Features.CoverArts.Commands.UploadCoverArtImage;
 using FluentValidation;
 
 namespace Application.Features.CoverArts.Commands.UploadCoverArtImage

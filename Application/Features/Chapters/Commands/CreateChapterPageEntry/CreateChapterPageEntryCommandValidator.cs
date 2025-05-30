@@ -1,4 +1,3 @@
-using Application.Features.Chapters.Commands.CreateChapterPageEntry;
 using FluentValidation;
 
 namespace Application.Features.Chapters.Commands.CreateChapterPageEntry

@@ -2,7 +2,6 @@ using Application.Common.DTOs; // Cho PagedResult
 using Application.Common.Responses; // Cho các Api Response mới
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.DependencyInjection; // Cho GetService
 
 namespace MangaReaderDB.Controllers
 {

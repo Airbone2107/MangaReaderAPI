@@ -2,11 +2,15 @@
 
 ## 1. Base URL
 
-Tất cả API endpoints đều có prefix `/api/v1/`. Ví dụ:
+Tất cả các API endpoints đều sử dụng tên của controller làm đường dẫn gốc. Ví dụ:
 
-```
-https://api.mangareader.com/api/v1/mangas
-```
+- `https://api.mangareader.com/mangas` (cho controller `MangasController`)
+- `https://api.mangareader.com/authors` (cho controller `AuthorsController`)
+
+Một số endpoint có thể có đường dẫn tùy chỉnh (absolute path) bắt đầu bằng `/` để tạo mối quan hệ rõ ràng hơn giữa các tài nguyên. Ví dụ:
+
+- `https://api.mangareader.com/mangas/{mangaId}/covers`
+- `https://api.mangareader.com/translatedmangas/{translatedMangaId}/chapters`
 
 ## 2. HTTP Methods
 
@@ -38,7 +42,7 @@ Các endpoints trả về danh sách đều hỗ trợ phân trang với các th
 Ví dụ:
 
 ```
-GET /api/v1/mangas?offset=20&limit=10
+GET /mangas?offset=20&limit=10
 ```
 
 ## 5. Filtering và Sorting
@@ -51,7 +55,7 @@ Các endpoints trả về danh sách hỗ trợ lọc và sắp xếp:
 Ví dụ:
 
 ```
-GET /api/v1/mangas?statusFilter=ongoing&orderBy=title&ascending=true
+GET /mangas?statusFilter=ongoing&orderBy=title&ascending=true
 ```
 
 ## 6. Cấu Trúc Response Body (JSON)
@@ -87,19 +91,19 @@ Tất cả các response thành công (200 OK, 201 Created) trả về dữ li�
 ```
 
 *   **`data.id`**: ID của tài nguyên chính (luôn là GUID dưới dạng chuỗi).
-*   **`data.type`**: Loại của tài nguyên chính (ví dụ: `"manga"`, `"author"`, `"tag"`, `"chapter"`, `"cover_art"`). Được viết bằng snake_case, số ít.
+*   **`data.type`**: Loại của tài nguyên chính (ví dụ: `"manga"`, `"author"`, `"tag"`, `"chapter"`, `"cover_art"`, `"translated_manga"`, `"tag_group"`, `"chapter_page"`). Được viết bằng snake_case, số ít.
 *   **`data.attributes`**: Một object chứa tất cả các thuộc tính của tài nguyên (tương ứng với `...AttributesDto`).
 *   **`data.relationships`**: (Tùy chọn, có thể không có nếu không có mối quan hệ) Một mảng các đối tượng `RelationshipObject`.
     *   **`id`**: ID của thực thể liên quan.
     *   **`type`**: Mô tả vai trò hoặc bản chất của mối quan hệ đó đối với thực thể gốc.
         *   Ví dụ, đối với một Manga:
-            *   Relationship tới Author với vai trò `Author`: `{ "id": "author-guid", "type": "author" }`
-            *   Relationship tới Author với vai trò `Artist`: `{ "id": "artist-guid", "type": "artist" }`
+            *   Relationship tới Author với vai trò `author`: `{ "id": "author-guid", "type": "author" }`
+            *   Relationship tới Author với vai trò `artist`: `{ "id": "artist-guid", "type": "artist" }`
             *   Relationship tới Tag: `{ "id": "tag-guid", "type": "tag" }`
-            *   Relationship tới CoverArt chính: `{ "id": "coverart-guid", "type": "cover_art" }`
+            *   Relationship tới CoverArt chính: `{ "id": "cover_art-guid", "type": "cover_art" }`
         *   Đối với một Chapter:
-            *   Relationship tới User (uploader): `{ "id": "user-id", "type": "user" }` (hoặc `"uploader"`)
-            *   Relationship tới Manga (manga gốc của chapter): `{ "id": "manga-guid", "type": "manga" }`
+            *   Relationship tới User (uploader): `{ "id": "user-id", "type": "user" }`
+            *   Relationship tới Manga (manga gốc của chapter, thông qua TranslatedManga): `{ "id": "manga-guid", "type": "manga" }`
 
 ### 6.2. Response Cho Danh Sách Đối Tượng (Collection)
 
@@ -257,86 +261,83 @@ Tất cả các response thành công (200 OK, 201 Created) trả về dữ li�
 
 ## 9. Các Loại Relationship Type
 
-Dưới đây là danh sách các loại relationship type được sử dụng trong API:
+Dưới đây là danh sách các giá trị `type` được sử dụng trong các đối tượng `ResourceObject` (cho chính tài nguyên) và `RelationshipObject` (cho mối quan hệ):
 
-| Type | Mô tả | Áp dụng cho |
-|------|-------|-------------|
-| `author` | Tác giả của manga | Manga -> Author |
-| `artist` | Họa sĩ của manga | Manga -> Author |
-| `tag` | Thẻ gắn với manga | Manga -> Tag |
-| `tag_group` | Nhóm chứa tag | Tag -> TagGroup |
-| `cover_art` | Ảnh bìa của manga | Manga -> CoverArt |
-| `manga` | Manga gốc | Chapter/TranslatedManga/CoverArt -> Manga |
-| `user` | Người dùng tải lên | Chapter -> User |
-| `chapter` | Chapter chứa page | ChapterPage -> Chapter |
-| `chapter_page` | Trang của chapter | Chapter -> ChapterPage |
-| `translated_manga` | Bản dịch của manga | Chapter -> TranslatedManga |
+| Giá trị `type` | Mô tả                                       | Nơi xuất hiện                                  |
+|----------------|---------------------------------------------|------------------------------------------------|
+| `author`       | Tác giả của manga                            | `ResourceObject` (cho Author); `RelationshipObject` (Manga -> Author) |
+| `artist`       | Họa sĩ của manga                             | `RelationshipObject` (Manga -> Author)         |
+| `tag`          | Thẻ gắn với manga                            | `ResourceObject` (cho Tag); `RelationshipObject` (Manga -> Tag) |
+| `tag_group`    | Nhóm chứa tag                               | `ResourceObject` (cho TagGroup); `RelationshipObject` (Tag -> TagGroup) |
+| `cover_art`    | Ảnh bìa của manga                            | `ResourceObject` (cho CoverArt); `RelationshipObject` (Manga -> CoverArt) |
+| `manga`        | Manga gốc                                   | `ResourceObject` (cho Manga); `RelationshipObject` (Chapter/TranslatedManga/CoverArt -> Manga) |
+| `user`         | Người dùng tải lên                           | `ResourceObject` (cho User - nếu có API riêng cho User); `RelationshipObject` (Chapter -> User) |
+| `chapter`      | Chương của manga                             | `ResourceObject` (cho Chapter); `RelationshipObject` (ChapterPage -> Chapter) |
+| `chapter_page` | Trang của chương                             | `ResourceObject` (cho ChapterPage)             |
+| `translated_manga` | Bản dịch của manga                       | `ResourceObject` (cho TranslatedManga)         |
 
 ## 10. Các Endpoints Chính
 
 ### Mangas
 
-- `GET /api/v1/mangas`: Lấy danh sách manga
-- `GET /api/v1/mangas/{id}`: Lấy thông tin chi tiết manga
-- `POST /api/v1/mangas`: Tạo manga mới
-- `PUT /api/v1/mangas/{id}`: Cập nhật manga
-- `DELETE /api/v1/mangas/{id}`: Xóa manga
-- `POST /api/v1/mangas/{mangaId}/tags`: Thêm tag cho manga
-- `DELETE /api/v1/mangas/{mangaId}/tags/{tagId}`: Xóa tag khỏi manga
-- `POST /api/v1/mangas/{mangaId}/authors`: Thêm tác giả cho manga
-- `DELETE /api/v1/mangas/{mangaId}/authors/{authorId}/role/{role}`: Xóa tác giả khỏi manga
+- `GET /mangas`: Lấy danh sách manga
+- `GET /mangas/{id}`: Lấy thông tin chi tiết manga
+- `POST /mangas`: Tạo manga mới (bao gồm cả tags và authors)
+- `PUT /mangas/{id}`: Cập nhật manga (bao gồm cả tags và authors)
+- `DELETE /mangas/{id}`: Xóa manga
 
 ### Authors
 
-- `GET /api/v1/authors`: Lấy danh sách tác giả
-- `GET /api/v1/authors/{id}`: Lấy thông tin chi tiết tác giả
-- `POST /api/v1/authors`: Tạo tác giả mới
-- `PUT /api/v1/authors/{id}`: Cập nhật tác giả
-- `DELETE /api/v1/authors/{id}`: Xóa tác giả
+- `GET /authors`: Lấy danh sách tác giả
+- `GET /authors/{id}`: Lấy thông tin chi tiết tác giả
+- `POST /authors`: Tạo tác giả mới
+- `PUT /authors/{id}`: Cập nhật tác giả
+- `DELETE /authors/{id}`: Xóa tác giả
 
 ### Tags
 
-- `GET /api/v1/tags`: Lấy danh sách tag
-- `GET /api/v1/tags/{id}`: Lấy thông tin chi tiết tag
-- `POST /api/v1/tags`: Tạo tag mới
-- `PUT /api/v1/tags/{id}`: Cập nhật tag
-- `DELETE /api/v1/tags/{id}`: Xóa tag
+- `GET /tags`: Lấy danh sách tag
+- `GET /tags/{id}`: Lấy thông tin chi tiết tag
+- `POST /tags`: Tạo tag mới
+- `PUT /tags/{id}`: Cập nhật tag
+- `DELETE /tags/{id}`: Xóa tag
 
 ### TagGroups
 
-- `GET /api/v1/taggroups`: Lấy danh sách nhóm tag
-- `GET /api/v1/taggroups/{id}`: Lấy thông tin chi tiết nhóm tag
-- `POST /api/v1/taggroups`: Tạo nhóm tag mới
-- `PUT /api/v1/taggroups/{id}`: Cập nhật nhóm tag
-- `DELETE /api/v1/taggroups/{id}`: Xóa nhóm tag
+- `GET /taggroups`: Lấy danh sách nhóm tag
+- `GET /taggroups/{id}`: Lấy thông tin chi tiết nhóm tag
+- `POST /taggroups`: Tạo nhóm tag mới
+- `PUT /taggroups/{id}`: Cập nhật nhóm tag
+- `DELETE /taggroups/{id}`: Xóa nhóm tag
 
 ### Chapters
 
-- `GET /api/v1/chapters/{id}`: Lấy thông tin chi tiết chapter
-- `GET /api/v1/translatedmangas/{translatedMangaId}/chapters`: Lấy danh sách chapter của một bản dịch
-- `POST /api/v1/chapters`: Tạo chapter mới
-- `PUT /api/v1/chapters/{id}`: Cập nhật chapter
-- `DELETE /api/v1/chapters/{id}`: Xóa chapter
-- `GET /api/v1/chapters/{chapterId}/pages`: Lấy danh sách trang của chapter
-- `POST /api/v1/chapters/{chapterId}/pages/entry`: Tạo entry cho trang mới
+- `GET /chapters/{id}`: Lấy thông tin chi tiết chapter
+- `GET /translatedmangas/{translatedMangaId}/chapters`: Lấy danh sách chapter của một bản dịch
+- `POST /chapters`: Tạo chapter mới
+- `PUT /chapters/{id}`: Cập nhật chapter
+- `DELETE /chapters/{id}`: Xóa chapter
+- `GET /chapters/{chapterId}/pages`: Lấy danh sách trang của chapter
+- `POST /chapters/{chapterId}/pages/entry`: Tạo entry cho trang mới
 
 ### ChapterPages
 
-- `POST /api/v1/chapterpages/{pageId}/image`: Upload ảnh cho trang
-- `PUT /api/v1/chapterpages/{pageId}/details`: Cập nhật thông tin trang
-- `DELETE /api/v1/chapterpages/{pageId}`: Xóa trang
+- `POST /chapterpages/{pageId}/image`: Upload ảnh cho trang
+- `PUT /chapterpages/{pageId}/details`: Cập nhật thông tin trang
+- `DELETE /chapterpages/{pageId}`: Xóa trang
 
 ### CoverArts
 
-- `GET /api/v1/coverarts/{id}`: Lấy thông tin chi tiết ảnh bìa
-- `GET /api/v1/mangas/{mangaId}/covers`: Lấy danh sách ảnh bìa của manga
-- `POST /api/v1/mangas/{mangaId}/covers`: Upload ảnh bìa mới
-- `DELETE /api/v1/coverarts/{id}`: Xóa ảnh bìa
+- `GET /coverarts/{id}`: Lấy thông tin chi tiết ảnh bìa
+- `GET /mangas/{mangaId}/covers`: Lấy danh sách ảnh bìa của manga
+- `POST /mangas/{mangaId}/covers`: Upload ảnh bìa mới
+- `DELETE /coverarts/{id}`: Xóa ảnh bìa
 
 ### TranslatedMangas
 
-- `GET /api/v1/translatedmangas/{id}`: Lấy thông tin chi tiết bản dịch
-- `GET /api/v1/mangas/{mangaId}/translations`: Lấy danh sách bản dịch của manga
-- `POST /api/v1/translatedmangas`: Tạo bản dịch mới
-- `PUT /api/v1/translatedmangas/{id}`: Cập nhật bản dịch
-- `DELETE /api/v1/translatedmangas/{id}`: Xóa bản dịch 
+- `GET /translatedmangas/{id}`: Lấy thông tin chi tiết bản dịch
+- `GET /mangas/{mangaId}/translations`: Lấy danh sách bản dịch của manga
+- `POST /translatedmangas`: Tạo bản dịch mới
+- `PUT /translatedmangas/{id}`: Cập nhật bản dịch
+- `DELETE /translatedmangas/{id}`: Xóa bản dịch
+```

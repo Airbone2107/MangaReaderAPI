@@ -1,9 +1,8 @@
+using Application.Common.Interfaces; // Cho IPhotoAccessor
 using Application.Contracts.Persistence;
 using Application.Exceptions;
-using Application.Common.Interfaces; // Cho IPhotoAccessor
 using MediatR;
 using Microsoft.Extensions.Logging;
-using Microsoft.EntityFrameworkCore; // Cho ToListAsync, etc.
 
 namespace Application.Features.Mangas.Commands.DeleteManga
 {

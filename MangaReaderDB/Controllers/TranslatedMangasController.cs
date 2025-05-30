@@ -8,10 +8,7 @@ using Application.Features.TranslatedMangas.Commands.UpdateTranslatedManga;
 using Application.Features.TranslatedMangas.Queries.GetTranslatedMangaById;
 using Application.Features.TranslatedMangas.Queries.GetTranslatedMangasByManga;
 using FluentValidation;
-using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using System.Linq; // Required for .Select on validationResult.Errors
-using Microsoft.Extensions.Logging; // Đảm bảo có using này
 
 namespace MangaReaderDB.Controllers
 {

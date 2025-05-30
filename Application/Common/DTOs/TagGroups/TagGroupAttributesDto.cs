@@ -1,5 +1,3 @@
-using System;
-
 namespace Application.Common.DTOs.TagGroups
 {
     public class TagGroupAttributesDto

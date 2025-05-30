@@ -3,7 +3,6 @@ using Application.Common.DTOs.Mangas;
 using Application.Common.Models;
 using Domain.Enums;
 using MediatR;
-using System.Collections.Generic; // Cần cho List
 
 namespace Application.Features.Mangas.Queries.GetMangas
 {

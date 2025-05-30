@@ -1,4 +1,3 @@
-using Application.Common.DTOs;
 using Application.Common.DTOs.CoverArts;
 using Application.Common.Models; // For ResourceObject
 using Application.Common.Responses;
@@ -8,10 +7,7 @@ using Application.Features.CoverArts.Commands.UploadCoverArtImage;
 using Application.Features.CoverArts.Queries.GetCoverArtById;
 using Application.Features.CoverArts.Queries.GetCoverArtsByManga;
 using FluentValidation;
-using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using System.Linq; // Required for .Select on validationResult.Errors
-using Microsoft.Extensions.Logging; // Đảm bảo có using này
 
 namespace MangaReaderDB.Controllers
 {

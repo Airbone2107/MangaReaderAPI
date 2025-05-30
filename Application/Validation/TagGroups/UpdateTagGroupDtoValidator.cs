@@ -1,4 +1,3 @@
- // Application/Validation/TagGroups/UpdateTagGroupDtoValidator.cs
 using Application.Common.DTOs.TagGroups;
 using FluentValidation;
 

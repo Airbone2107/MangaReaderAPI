@@ -1,5 +1,3 @@
-using System;
-
 namespace Application.Common.DTOs.Authors
 {
     public class AuthorAttributesDto

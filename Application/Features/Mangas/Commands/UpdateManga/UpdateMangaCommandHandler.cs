@@ -1,6 +1,7 @@
 using Application.Contracts.Persistence;
 using Application.Exceptions;
 using AutoMapper;
+using Domain.Entities;
 using MediatR;
 using Microsoft.Extensions.Logging;
 
@@ -21,7 +22,7 @@ namespace Application.Features.Mangas.Commands.UpdateManga
 
         public async Task<Unit> Handle(UpdateMangaCommand request, CancellationToken cancellationToken)
         {
-            var mangaToUpdate = await _unitOfWork.MangaRepository.GetByIdAsync(request.MangaId);
+            var mangaToUpdate = await _unitOfWork.MangaRepository.GetMangaWithDetailsAsync(request.MangaId);
 
             if (mangaToUpdate == null)
             {
@@ -29,19 +30,62 @@ namespace Application.Features.Mangas.Commands.UpdateManga
                 throw new NotFoundException(nameof(Domain.Entities.Manga), request.MangaId);
             }
 
-            // Kiểm tra IsLocked: Nếu Manga bị khóa, có thể không cho phép một số thay đổi nhất định (tùy logic nghiệp vụ)
-            // if (mangaToUpdate.IsLocked && (mangaToUpdate.Title != request.Title /* ... các trường khác ... */))
-            // {
-            //     _logger.LogWarning("Attempted to update a locked manga {MangaId}.", request.MangaId);
-            //     throw new Exceptions.ValidationException("Cannot update a locked manga's details.");
-            // }
-
             _mapper.Map(request, mangaToUpdate);
 
-            await _unitOfWork.MangaRepository.UpdateAsync(mangaToUpdate);
+            var requestedTagIds = request.TagIds ?? new List<Guid>();
+            var currentTagIds = mangaToUpdate.MangaTags.Select(mt => mt.TagId).ToList();
+
+            var tagsToRemove = mangaToUpdate.MangaTags
+                .Where(mt => !requestedTagIds.Contains(mt.TagId))
+                .ToList();
+            foreach (var mangaTag in tagsToRemove)
+            {
+                mangaToUpdate.MangaTags.Remove(mangaTag);
+            }
+
+            var newTagIds = requestedTagIds.Except(currentTagIds).ToList();
+            foreach (var tagId in newTagIds)
+            {
+                var tagExists = await _unitOfWork.TagRepository.ExistsAsync(tagId);
+                if (tagExists)
+                {
+                    mangaToUpdate.MangaTags.Add(new MangaTag { MangaId = mangaToUpdate.MangaId, TagId = tagId });
+                }
+                else
+                {
+                    _logger.LogWarning("Tag with ID {TagId} not found when updating manga {MangaId}. It will be ignored.", tagId, mangaToUpdate.MangaId);
+                }
+            }
+
+            var requestedAuthors = request.Authors ?? new List<Application.Common.DTOs.Mangas.MangaAuthorInputDto>();
+            
+            var authorsToRemove = mangaToUpdate.MangaAuthors
+                .Where(ma => !requestedAuthors.Any(r => r.AuthorId == ma.AuthorId && r.Role == ma.Role))
+                .ToList();
+            foreach (var mangaAuthor in authorsToRemove)
+            {
+                mangaToUpdate.MangaAuthors.Remove(mangaAuthor);
+            }
+
+            foreach (var authorInput in requestedAuthors)
+            {
+                if (!mangaToUpdate.MangaAuthors.Any(ma => ma.AuthorId == authorInput.AuthorId && ma.Role == authorInput.Role))
+                {
+                    var authorExists = await _unitOfWork.AuthorRepository.ExistsAsync(authorInput.AuthorId);
+                    if (authorExists)
+                    {
+                        mangaToUpdate.MangaAuthors.Add(new MangaAuthor { MangaId = mangaToUpdate.MangaId, AuthorId = authorInput.AuthorId, Role = authorInput.Role });
+                    }
+                    else
+                    {
+                         _logger.LogWarning("Author with ID {AuthorId} not found when updating manga {MangaId}. It will be ignored.", authorInput.AuthorId, mangaToUpdate.MangaId);
+                    }
+                }
+            }
+            
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            _logger.LogInformation("Manga {MangaId} updated successfully.", request.MangaId);
+            _logger.LogInformation("Manga {MangaId} updated successfully with its tags and authors.", request.MangaId);
             return Unit.Value;
         }
     }

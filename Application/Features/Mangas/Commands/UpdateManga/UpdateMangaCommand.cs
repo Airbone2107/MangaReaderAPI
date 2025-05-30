@@ -1,3 +1,4 @@
+using Application.Common.DTOs.Mangas;
 using Domain.Enums;
 using MediatR;
 
@@ -13,5 +14,8 @@ namespace Application.Features.Mangas.Commands.UpdateManga
         public int? Year { get; set; }
         public ContentRating ContentRating { get; set; }
         public bool IsLocked { get; set; }
+
+        public List<Guid>? TagIds { get; set; }
+        public List<MangaAuthorInputDto>? Authors { get; set; }
     }
 } 
