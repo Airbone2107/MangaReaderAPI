@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Persistence.Data;
 using Persistence.Data.Interceptors;
 using Persistence.Repositories; // Thêm using cho UnitOfWork và các Repository
+using System.Text.Json.Serialization; // Thêm using này
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -51,7 +52,15 @@ builder.Services.AddScoped<ITranslatedMangaRepository, TranslatedMangaRepository
 // Không cần đăng ký IGenericRepository vì nó thường được sử dụng như một base class
 
 // Các services khác của ASP.NET Core
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options => // THÊM KHỐI NÀY
+    {
+        // Sử dụng JsonStringEnumConverter để chuyển đổi enum thành chuỗi và ngược lại
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        // Đảm bảo Property Naming Policy là camelCase (mặc định của ASP.NET Core API)
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        // Các tùy chọn JsonSerializerOptions khác có thể được thêm vào đây nếu cần
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
