@@ -1,10 +1,11 @@
 using Application.Common.Interfaces;
 using Application.Contracts.Persistence;
 using Application.Exceptions;
-using AutoMapper; // Nếu cần map từ DTO/Command sang Entity
+using AutoMapper;
 using Domain.Entities;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using System.IO;
 
 namespace Application.Features.CoverArts.Commands.UploadCoverArtImage
 {
@@ -32,16 +33,14 @@ namespace Application.Features.CoverArts.Commands.UploadCoverArtImage
             }
 
             // Tạo desiredPublicId cho Cloudinary
-            // Ví dụ: mangas_v2/{MangaId}/covers/{NewGuid}_{OriginalFileNameWithoutExtension}
-            // Hoặc mangas_v2/{MangaId}/covers/volume_{VolumeNumber}_{NewGuid}
-            var fileExtension = Path.GetExtension(request.OriginalFileName);
+            // KHÔNG BAO GỒM ĐUÔI FILE
             var uniqueId = Guid.NewGuid().ToString("N").Substring(0, 8); // Một phần Guid cho duy nhất
-            var desiredPublicId = $"mangas_v2/{request.MangaId}/covers/{request.Volume ?? "default"}_{uniqueId}{fileExtension}";
+            var desiredPublicId = $"mangas_v2/{request.MangaId}/covers/{request.Volume ?? "default"}_{uniqueId}";
             
             var uploadResult = await _photoAccessor.UploadPhotoAsync(
                 request.ImageStream,
                 desiredPublicId,
-                request.OriginalFileName
+                request.OriginalFileName // originalFileNameForUpload vẫn cần chứa đuôi file cho Cloudinary biết định dạng gốc.
             );
 
             if (uploadResult == null || string.IsNullOrEmpty(uploadResult.PublicId))
