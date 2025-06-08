@@ -1,33 +1,43 @@
+// MangaReaderDB/Controllers/ChaptersController.cs
 using Application.Common.DTOs.Chapters;
 using Application.Common.Models; // For ResourceObject
 using Application.Common.Responses;
-using Application.Exceptions;
+// Application.Exceptions đã được using, nhưng ta sẽ chỉ định rõ ràng khi new ValidationException
 using Application.Features.Chapters.Commands.CreateChapter;
 using Application.Features.Chapters.Commands.CreateChapterPageEntry;
 using Application.Features.Chapters.Commands.DeleteChapter;
 using Application.Features.Chapters.Commands.DeleteChapterPage;
+using Application.Features.Chapters.Commands.SyncChapterPages;
 using Application.Features.Chapters.Commands.UpdateChapter;
 using Application.Features.Chapters.Commands.UpdateChapterPageDetails;
 using Application.Features.Chapters.Commands.UploadChapterPageImage;
+using Application.Features.Chapters.Commands.UploadChapterPages;
 using Application.Features.Chapters.Queries.GetChapterById;
 using Application.Features.Chapters.Queries.GetChapterPages;
 using Application.Features.Chapters.Queries.GetChaptersByTranslatedManga;
-using FluentValidation;
+using FluentValidation; // Giữ using này cho IValidator
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace MangaReaderDB.Controllers
 {
     public class ChaptersController : BaseApiController
     {
-        private readonly IValidator<CreateChapterDto> _createChapterDtoValidator;
-        private readonly IValidator<UpdateChapterDto> _updateChapterDtoValidator;
-        private readonly IValidator<CreateChapterPageDto> _createChapterPageDtoValidator;
+        private readonly FluentValidation.IValidator<CreateChapterDto> _createChapterDtoValidator;
+        private readonly FluentValidation.IValidator<UpdateChapterDto> _updateChapterDtoValidator;
+        private readonly FluentValidation.IValidator<CreateChapterPageDto> _createChapterPageDtoValidator;
         private readonly ILogger<ChaptersController> _logger;
 
         public ChaptersController(
-            IValidator<CreateChapterDto> createChapterDtoValidator,
-            IValidator<UpdateChapterDto> updateChapterDtoValidator,
-            IValidator<CreateChapterPageDto> createChapterPageDtoValidator,
+            FluentValidation.IValidator<CreateChapterDto> createChapterDtoValidator,
+            FluentValidation.IValidator<UpdateChapterDto> updateChapterDtoValidator,
+            FluentValidation.IValidator<CreateChapterPageDto> createChapterPageDtoValidator,
             ILogger<ChaptersController> logger)
         {
             _createChapterDtoValidator = createChapterDtoValidator;
@@ -47,14 +57,11 @@ namespace MangaReaderDB.Controllers
             {
                 throw new Application.Exceptions.ValidationException(validationResult.Errors);
             }
-            
-            // Giả sử UploadedByUserId được lấy từ context người dùng đã xác thực
-            // Tạm thời để trống hoặc gán một giá trị mặc định nếu cần thiết cho command.
-            // int currentUserId = ... ; // Lấy từ HttpContext.User hoặc service
+
             var command = new CreateChapterCommand
             {
                 TranslatedMangaId = createDto.TranslatedMangaId,
-                UploadedByUserId = createDto.UploadedByUserId, // Cần thay thế bằng UserId từ context
+                UploadedByUserId = createDto.UploadedByUserId,
                 Volume = createDto.Volume,
                 ChapterNumber = createDto.ChapterNumber,
                 Title = createDto.Title,
@@ -67,7 +74,7 @@ namespace MangaReaderDB.Controllers
             if (chapterResource == null)
             {
                 _logger.LogError($"FATAL: Chapter with ID {chapterId} was not found after creation!");
-                return StatusCode(StatusCodes.Status500InternalServerError, 
+                return StatusCode(StatusCodes.Status500InternalServerError,
                     new ApiErrorResponse(new ApiError(500, "Creation Error", "Failed to retrieve resource after creation.")));
             }
             return Created(nameof(GetChapterById), new { id = chapterId }, chapterResource);
@@ -82,12 +89,12 @@ namespace MangaReaderDB.Controllers
             var chapterResource = await Mediator.Send(query);
             if (chapterResource == null)
             {
-                throw new NotFoundException(nameof(Domain.Entities.Chapter), id);
+                throw new Application.Exceptions.NotFoundException(nameof(Domain.Entities.Chapter), id);
             }
             return Ok(chapterResource);
         }
 
-        [HttpGet("/translatedmangas/{translatedMangaId:guid}/chapters")] 
+        [HttpGet("/translatedmangas/{translatedMangaId:guid}/chapters")]
         [ProducesResponseType(typeof(ApiCollectionResponse<ResourceObject<ChapterAttributesDto>>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetChaptersByTranslatedManga(Guid translatedMangaId, [FromQuery] GetChaptersByTranslatedMangaQuery query)
         {
@@ -95,7 +102,7 @@ namespace MangaReaderDB.Controllers
             var result = await Mediator.Send(query);
             return Ok(result);
         }
-        
+
         [HttpPut("{id:guid}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
@@ -131,8 +138,8 @@ namespace MangaReaderDB.Controllers
             return NoContent();
         }
 
-        [HttpPost("{chapterId:guid}/pages/entry")] 
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status201Created)] // Payload là { "pageId": "guid" }
+        [HttpPost("{chapterId:guid}/pages/entry")]
+        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status201Created)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> CreateChapterPageEntry(Guid chapterId, [FromBody] CreateChapterPageDto createPageDto)
@@ -140,24 +147,22 @@ namespace MangaReaderDB.Controllers
             var validationResult = await _createChapterPageDtoValidator.ValidateAsync(createPageDto);
             if (!validationResult.IsValid)
             {
-                 throw new Application.Exceptions.ValidationException(validationResult.Errors);
+                throw new Application.Exceptions.ValidationException(validationResult.Errors);
             }
-            
-            var command = new CreateChapterPageEntryCommand 
-            { 
-                ChapterId = chapterId, 
+
+            var command = new CreateChapterPageEntryCommand
+            {
+                ChapterId = chapterId,
                 PageNumber = createPageDto.PageNumber
             };
             var pageId = await Mediator.Send(command);
 
             var responsePayload = new { PageId = pageId };
-            
-            // Trả về 201 Created với Location header trỏ đến action upload image cho page này
-            // Action "UploadChapterPageImage" nằm trong "ChapterPagesController"
+
             return CreatedAtAction(
-                actionName: nameof(ChapterPagesController.UploadChapterPageImage), 
-                controllerName: "ChapterPages", 
-                routeValues: new { pageId = pageId }, 
+                actionName: nameof(ChapterPagesController.UploadChapterPageImage),
+                controllerName: "ChapterPages",
+                routeValues: new { pageId = pageId },
                 value: new ApiResponse<object>(responsePayload)
             );
         }
@@ -170,17 +175,163 @@ namespace MangaReaderDB.Controllers
             var result = await Mediator.Send(query);
             return Ok(result);
         }
+
+        [HttpPost("{chapterId:guid}/pages/batch")]
+        [ProducesResponseType(typeof(ApiResponse<List<ChapterPageAttributesDto>>), StatusCodes.Status201Created)] // Sử dụng 200 OK để đơn giản, hoặc 201 nếu tất cả đều mới
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> UploadChapterPages(Guid chapterId, [FromForm] List<IFormFile> files, [FromForm] List<int> pageNumbers)
+        {
+            if (files == null || !files.Any())
+            {
+                throw new Application.Exceptions.ValidationException("files", "At least one file is required.");
+            }
+            if (pageNumbers == null || !pageNumbers.Any())
+            {
+                throw new Application.Exceptions.ValidationException("pageNumbers", "Page numbers are required for all files.");
+            }
+            if (files.Count != pageNumbers.Count)
+            {
+                throw new Application.Exceptions.ValidationException("files/pageNumbers", "The number of files must match the number of page numbers provided.");
+            }
+
+            var filesToUpload = new List<FileToUpload>();
+            for (int i = 0; i < files.Count; i++)
+            {
+                var file = files[i];
+                var pageNumber = pageNumbers[i];
+
+                if (file.Length == 0)
+                    throw new Application.Exceptions.ValidationException($"files[{i}]", "File content cannot be empty.");
+                if (file.Length > 10 * 1024 * 1024)
+                    throw new Application.Exceptions.ValidationException($"files[{i}]", "File size cannot exceed 10MB.");
+
+                var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
+                var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+                if (string.IsNullOrEmpty(ext) || !allowedExtensions.Contains(ext))
+                {
+                    throw new Application.Exceptions.ValidationException($"files[{i}]", "Invalid file type. Allowed types are: " + string.Join(", ", allowedExtensions));
+                }
+                if (pageNumber <= 0)
+                {
+                    throw new Application.Exceptions.ValidationException($"pageNumbers[{i}]", "Page number must be greater than 0.");
+                }
+
+                var memoryStream = new MemoryStream();
+                await file.CopyToAsync(memoryStream);
+                memoryStream.Position = 0;
+
+                filesToUpload.Add(new FileToUpload
+                {
+                    ImageStream = memoryStream,
+                    OriginalFileName = file.FileName,
+                    ContentType = file.ContentType,
+                    DesiredPageNumber = pageNumber
+                });
+            }
+
+            var command = new UploadChapterPagesCommand
+            {
+                ChapterId = chapterId,
+                Files = filesToUpload
+            };
+
+            var result = await Mediator.Send(command);
+
+            return Ok(new ApiResponse<List<ChapterPageAttributesDto>>(result));
+        }
+
+        [HttpPut("{chapterId:guid}/pages")]
+        [ProducesResponseType(typeof(ApiResponse<List<ChapterPageAttributesDto>>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> SyncChapterPages(Guid chapterId, [FromForm] string pageOperationsJson, [FromForm] IFormFileCollection files)
+        {
+            if (string.IsNullOrEmpty(pageOperationsJson))
+            {
+                throw new Application.Exceptions.ValidationException("pageOperationsJson", "Page operations JSON is required.");
+            }
+
+            List<PageOperationDto>? pageOperations;
+            try
+            {
+                pageOperations = JsonSerializer.Deserialize<List<PageOperationDto>>(pageOperationsJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Failed to deserialize pageOperationsJson.");
+                throw new Application.Exceptions.ValidationException("pageOperationsJson", "Invalid JSON format for page operations.");
+            }
+
+            if (pageOperations == null)
+            {
+                throw new Application.Exceptions.ValidationException("pageOperationsJson", "Page operations cannot be null after deserialization.");
+            }
+
+            var instructions = new List<PageSyncInstruction>();
+            var fileMap = files.ToDictionary(f => f.Name, f => f);
+
+            foreach (var op in pageOperations)
+            {
+                if (op.PageNumber <= 0)
+                {
+                    throw new Application.Exceptions.ValidationException($"PageOperation.PageNumber", $"Page number '{op.PageNumber}' for operation related to PageId '{op.PageId?.ToString() ?? "new"}' or FileIdentifier '{op.FileIdentifier}' must be positive.");
+                }
+
+                FileToUploadInfo? fileToUploadInfo = null;
+                if (!string.IsNullOrEmpty(op.FileIdentifier))
+                {
+                    if (fileMap.TryGetValue(op.FileIdentifier, out var formFile))
+                    {
+                        if (formFile.Length == 0) throw new Application.Exceptions.ValidationException(op.FileIdentifier, "File content cannot be empty.");
+                        if (formFile.Length > 10 * 1024 * 1024) throw new Application.Exceptions.ValidationException(op.FileIdentifier, "File size cannot exceed 10MB.");
+
+                        var memoryStream = new MemoryStream();
+                        await formFile.CopyToAsync(memoryStream);
+                        memoryStream.Position = 0;
+                        fileToUploadInfo = new FileToUploadInfo
+                        {
+                            ImageStream = memoryStream,
+                            OriginalFileName = formFile.FileName,
+                            ContentType = formFile.ContentType
+                        };
+                    }
+                    else
+                    {
+                        if (!op.PageId.HasValue)
+                        {
+                            throw new Application.Exceptions.ValidationException(op.FileIdentifier, $"File with identifier '{op.FileIdentifier}' not found in the uploaded files, but is required for a new page.");
+                        }
+                    }
+                }
+
+                instructions.Add(new PageSyncInstruction
+                {
+                    PageId = op.PageId ?? Guid.NewGuid(),
+                    DesiredPageNumber = op.PageNumber,
+                    ImageFileToUpload = fileToUploadInfo
+                });
+            }
+
+            var command = new SyncChapterPagesCommand
+            {
+                ChapterId = chapterId,
+                Instructions = instructions
+            };
+
+            var result = await Mediator.Send(command);
+            return Ok(new ApiResponse<List<ChapterPageAttributesDto>>(result));
+        }
     }
 
-    // Tách riêng ChapterPagesController để quản lý các endpoint liên quan đến ChapterPage
     [Route("chapterpages")]
     public class ChapterPagesController : BaseApiController
     {
-        private readonly IValidator<UpdateChapterPageDto> _updateChapterPageDtoValidator;
+        private readonly FluentValidation.IValidator<UpdateChapterPageDto> _updateChapterPageDtoValidator;
         private readonly ILogger<ChapterPagesController> _logger;
 
         public ChapterPagesController(
-            IValidator<UpdateChapterPageDto> updateChapterPageDtoValidator,
+            FluentValidation.IValidator<UpdateChapterPageDto> updateChapterPageDtoValidator,
             ILogger<ChapterPagesController> logger)
         {
             _updateChapterPageDtoValidator = updateChapterPageDtoValidator;
@@ -188,18 +339,18 @@ namespace MangaReaderDB.Controllers
         }
 
         [HttpPost("{pageId:guid}/image")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)] // Payload là { "publicId": "string" }
-        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)] // Cho lỗi file
-        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)] // Cho pageId
+        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UploadChapterPageImage(Guid pageId, IFormFile file)
         {
             if (file == null || file.Length == 0)
             {
                 throw new Application.Exceptions.ValidationException("file", "File is required.");
             }
-            if (file.Length > 5 * 1024 * 1024) 
+            if (file.Length > 5 * 1024 * 1024)
             {
-                 throw new Application.Exceptions.ValidationException("file", "File size cannot exceed 5MB.");
+                throw new Application.Exceptions.ValidationException("file", "File size cannot exceed 5MB.");
             }
             var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
             var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
@@ -216,10 +367,10 @@ namespace MangaReaderDB.Controllers
                 OriginalFileName = file.FileName,
                 ContentType = file.ContentType
             };
-            var publicId = await Mediator.Send(command); // Handler sẽ throw NotFoundException nếu pageId không tồn tại
-            
+            var publicId = await Mediator.Send(command);
+
             var responsePayload = new { PublicId = publicId };
-            return Ok(responsePayload); // BaseApiController.Ok sẽ bọc trong ApiResponse<object>
+            return Ok(responsePayload);
         }
 
         [HttpPut("{pageId:guid}/details")]
@@ -253,4 +404,4 @@ namespace MangaReaderDB.Controllers
             return NoContent();
         }
     }
-} 
+}

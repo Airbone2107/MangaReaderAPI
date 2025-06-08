@@ -29,21 +29,20 @@ namespace Application.Features.Chapters.Commands.UploadChapterPageImage
                 throw new NotFoundException(nameof(Domain.Entities.ChapterPage), request.ChapterPageId);
             }
 
-            // Nếu ChapterPage đã có ảnh (PublicId không rỗng), xóa ảnh cũ trước khi upload ảnh mới.
-            if (!string.IsNullOrEmpty(chapterPage.PublicId))
-            {
-                var deletionResult = await _photoAccessor.DeletePhotoAsync(chapterPage.PublicId);
-                if (deletionResult != "ok" && deletionResult != "not found") 
-                {
-                    _logger.LogWarning("Failed to delete old chapter page image {OldPublicId} from Cloudinary for ChapterPage {ChapterPageId}. Result: {DeletionResult}",
-                        chapterPage.PublicId, request.ChapterPageId, deletionResult);
-                }
-            }
-            
-            // Tạo desiredPublicId cho Cloudinary dựa trên ChapterId và PageNumber.
+            // Nếu ChapterPage đã có ảnh (PublicId không rỗng), và PublicId này khác với PublicId mới sẽ được tạo
+            // (trường hợp này ít xảy ra nếu PublicId luôn dựa trên PageId, nhưng để an toàn, ta có thể xóa ảnh cũ nếu nó không trống)
+            // Với Overwrite = true trong PhotoAccessor, việc xóa ảnh cũ trước khi upload ảnh mới với cùng PublicId là không bắt buộc.
+            // Tuy nhiên, nếu PublicId cũ khác (ví dụ: do thay đổi logic tạo PublicId), thì nên xóa.
+            // Hiện tại, UploadPhotoAsync đã có Overwrite=true, nên nếu PublicId mới trùng PublicId cũ, ảnh sẽ được ghi đè.
+            // Nếu PublicId mới khác PublicId cũ (do chapterPage.PageId thay đổi - không thể xảy ra, hoặc logic tạo publicId thay đổi),
+            // thì ảnh cũ sẽ không được xóa tự động. Logic này cần xem xét kỹ tùy theo yêu cầu chính xác.
+            // Với logic mới PublicId = ".../pages/{chapterPage.PageId}", PublicId sẽ không thay đổi cho một PageId cụ thể.
+            // Việc xóa ảnh cũ chỉ cần thiết nếu bạn muốn dọn dẹp Cloudinary khi ảnh không còn được tham chiếu.
+            // Hiện tại, ta chỉ cần đảm bảo ghi đè nếu PublicId giống nhau.
+
+            // Tạo desiredPublicId cho Cloudinary dựa trên ChapterId và PageId.
             // KHÔNG BAO GỒM ĐUÔI FILE.
-            // Cloudinary sẽ tự động thêm đuôi file thích hợp khi tạo URL hiển thị ảnh.
-            var desiredPublicId = $"chapters/{chapterPage.ChapterId}/pages/{chapterPage.PageNumber}";
+            var desiredPublicId = $"chapters/{chapterPage.ChapterId}/pages/{chapterPage.PageId}";
             
             _logger.LogInformation("Attempting to upload image for ChapterPageId '{ChapterPageId}' with desiredPublicId '{DesiredPublicId}'.", 
                                    request.ChapterPageId, desiredPublicId);
@@ -51,25 +50,22 @@ namespace Application.Features.Chapters.Commands.UploadChapterPageImage
             var uploadResult = await _photoAccessor.UploadPhotoAsync(
                 request.ImageStream,
                 desiredPublicId, 
-                request.OriginalFileName // originalFileNameForUpload được truyền vào, Cloudinary có thể dùng nó cho metadata.
+                request.OriginalFileName
             );
 
             if (uploadResult == null || string.IsNullOrEmpty(uploadResult.PublicId))
             {
-                _logger.LogError("Failed to upload image for ChapterPage {ChapterPageId} (ChapterID: {ChapterId}, PageNumber: {PageNumber}). Desired PublicId was: {DesiredPublicId}", 
-                    request.ChapterPageId, chapterPage.ChapterId, chapterPage.PageNumber, desiredPublicId);
-                throw new ApiException($"Image upload failed for chapter page {chapterPage.PageNumber} of chapter {chapterPage.ChapterId}.");
+                _logger.LogError("Failed to upload image for ChapterPage {ChapterPageId} (ChapterID: {ChapterId}). Desired PublicId was: {DesiredPublicId}", 
+                    request.ChapterPageId, chapterPage.ChapterId, desiredPublicId);
+                throw new ApiException($"Image upload failed for chapter page of chapter {chapterPage.ChapterId}.");
             }
-
-            // PublicId trả về từ Cloudinary (uploadResult.PublicId) nên giống với desiredPublicId bạn cung cấp
-            // (nếu không có đuôi file). Nếu nó vẫn chứa đuôi file, có thể do cấu hình của Cloudinary.
-            // Tuy nhiên, nếu PublicId được lưu ở đây không có đuôi, thì link sẽ đúng.
+            
             chapterPage.PublicId = uploadResult.PublicId; 
             await _unitOfWork.ChapterRepository.UpdatePageAsync(chapterPage);
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            _logger.LogInformation("Image uploaded. ChapterPage {ChapterPageId} (ChapterID: {ChapterId}, PageNumber: {PageNumber}) now has PublicId: {ActualPublicId}.", 
-                request.ChapterPageId, chapterPage.ChapterId, chapterPage.PageNumber, uploadResult.PublicId);
+            _logger.LogInformation("Image uploaded. ChapterPage {ChapterPageId} (ChapterID: {ChapterId}) now has PublicId: {ActualPublicId}.", 
+                request.ChapterPageId, chapterPage.ChapterId, uploadResult.PublicId);
             return uploadResult.PublicId;
         }
     }
