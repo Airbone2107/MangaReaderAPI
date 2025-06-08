@@ -238,7 +238,8 @@ namespace MangaReaderDB.Controllers
 
             var result = await Mediator.Send(command);
 
-            return Ok(new ApiResponse<List<ChapterPageAttributesDto>>(result));
+            // Bỏ new ApiResponse<> vì Ok() của BaseApiController sẽ tự làm.
+            return Ok(result);
         }
 
         [HttpPut("{chapterId:guid}/pages")]
@@ -320,7 +321,9 @@ namespace MangaReaderDB.Controllers
             };
 
             var result = await Mediator.Send(command);
-            return Ok(new ApiResponse<List<ChapterPageAttributesDto>>(result));
+            
+            // Bỏ new ApiResponse<> vì Ok() của BaseApiController sẽ tự làm.
+            return Ok(result);
         }
     }
 
