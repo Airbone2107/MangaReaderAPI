@@ -24,5 +24,21 @@ namespace Persistence.Repositories
                 .AsNoTracking()
                 .FirstOrDefaultAsync(m => m.MangaId == mangaId);
         }
+
+        public async Task<Manga?> GetMangaWithDetailsForUpdateAsync(Guid mangaId)
+        {
+            // Truy vấn tương tự GetMangaWithDetailsAsync nhưng BỎ AsNoTracking()
+            // để Entity Framework theo dõi các thay đổi.
+            return await _dbSet
+                .Include(m => m.MangaTags)
+                    .ThenInclude(mt => mt.Tag)
+                        .ThenInclude(t => t.TagGroup)
+                .Include(m => m.MangaAuthors)
+                    .ThenInclude(ma => ma.Author)
+                .Include(m => m.CoverArts)
+                .Include(m => m.TranslatedMangas)
+                // KHÔNG sử dụng .AsNoTracking() ở đây
+                .FirstOrDefaultAsync(m => m.MangaId == mangaId);
+        }
     }
 } 

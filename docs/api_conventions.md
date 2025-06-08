@@ -104,6 +104,7 @@ Tất cả các response thành công (200 OK, 201 Created) trả về dữ li�
         *   Đối với một Chapter:
             *   Relationship tới User (uploader): `{ "id": "user-id", "type": "user" }`
             *   Relationship tới Manga (manga gốc của chapter, thông qua TranslatedManga): `{ "id": "manga-guid", "type": "manga" }`
+            *   Relationship tới TranslatedManga (bản dịch chứa chapter này): `{ "id": "translated-manga-guid", "type": "translated_manga" }`
 
 ### 6.2. Response Cho Danh Sách Đối Tượng (Collection)
 
@@ -274,7 +275,7 @@ Dưới đây là danh sách các giá trị `type` được sử dụng trong c
 | `user`         | Người dùng tải lên                           | `ResourceObject` (cho User - nếu có API riêng cho User); `RelationshipObject` (Chapter -> User) |
 | `chapter`      | Chương của manga                             | `ResourceObject` (cho Chapter); `RelationshipObject` (ChapterPage -> Chapter) |
 | `chapter_page` | Trang của chương                             | `ResourceObject` (cho ChapterPage)             |
-| `translated_manga` | Bản dịch của manga                       | `ResourceObject` (cho TranslatedManga)         |
+| `translated_manga` | Bản dịch của manga                       | `ResourceObject` (cho TranslatedManga); `RelationshipObject` (Chapter -> TranslatedManga) |
 
 ## 10. Các Endpoints Chính
 

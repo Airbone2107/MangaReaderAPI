@@ -19,7 +19,12 @@ builder.Services.AddSingleton<AuditableEntitySaveChangesInterceptor>();
 builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
 {
     var interceptor = serviceProvider.GetRequiredService<AuditableEntitySaveChangesInterceptor>();
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"))
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
+               // Cấu hình Query Splitting Behavior
+               sqlServerOptionsAction: sqlOptions =>
+               {
+                   sqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+               })
            .AddInterceptors(interceptor);
 });
 

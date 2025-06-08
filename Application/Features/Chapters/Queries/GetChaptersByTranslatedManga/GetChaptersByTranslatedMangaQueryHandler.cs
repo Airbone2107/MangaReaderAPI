@@ -87,6 +87,15 @@ namespace Application.Features.Chapters.Queries.GetChaptersByTranslatedManga
                 {
                     relationships.Add(new RelationshipObject { Id = chapter.TranslatedManga.Manga.MangaId.ToString(), Type = "manga" });
                 }
+                // Thêm relationship cho TranslatedManga
+                if (chapter.TranslatedManga != null)
+                {
+                    relationships.Add(new RelationshipObject
+                    {
+                        Id = chapter.TranslatedManga.TranslatedMangaId.ToString(),
+                        Type = "translated_manga" // Type mới
+                    });
+                }
                 resourceObjects.Add(new ResourceObject<ChapterAttributesDto>
                 {
                     Id = chapter.ChapterId.ToString(),

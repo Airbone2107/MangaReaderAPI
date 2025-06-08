@@ -22,7 +22,7 @@ namespace Application.Features.Mangas.Commands.UpdateManga
 
         public async Task<Unit> Handle(UpdateMangaCommand request, CancellationToken cancellationToken)
         {
-            var mangaToUpdate = await _unitOfWork.MangaRepository.GetMangaWithDetailsAsync(request.MangaId);
+            var mangaToUpdate = await _unitOfWork.MangaRepository.GetMangaWithDetailsForUpdateAsync(request.MangaId);
 
             if (mangaToUpdate == null)
             {
