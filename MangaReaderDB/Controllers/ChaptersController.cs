@@ -248,6 +248,23 @@ namespace MangaReaderDB.Controllers
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> SyncChapterPages(Guid chapterId, [FromForm] string pageOperationsJson, [FromForm] IFormFileCollection files)
         {
+            _logger.LogInformation("SyncChapterPages called for ChapterId: {ChapterId}", chapterId);
+            _logger.LogInformation("Received pageOperationsJson: {PageOperationsJson}", pageOperationsJson);
+
+            if (files != null && files.Any())
+            {
+                _logger.LogInformation("Received {FilesCount} files in IFormFileCollection:", files.Count);
+                foreach (var f in files)
+                {
+                    _logger.LogInformation("- File Name (from IFormFile.Name): '{FormFileName}', OriginalFileName: '{OriginalFileName}', ContentType: '{ContentType}', Length: {Length} bytes",
+                        f.Name, f.FileName, f.ContentType, f.Length);
+                }
+            }
+            else
+            {
+                _logger.LogWarning("No files received in IFormFileCollection.");
+            }
+
             if (string.IsNullOrEmpty(pageOperationsJson))
             {
                 throw new Application.Exceptions.ValidationException("pageOperationsJson", "Page operations JSON is required.");
@@ -269,6 +286,14 @@ namespace MangaReaderDB.Controllers
                 throw new Application.Exceptions.ValidationException("pageOperationsJson", "Page operations cannot be null after deserialization.");
             }
 
+            _logger.LogInformation("Deserialized {PageOperationsCount} page operations from JSON:", pageOperations.Count);
+            foreach (var opLog in pageOperations)
+            {
+                _logger.LogInformation("- Operation: PageId='{PageId}', PageNumber={PageNumber}, FileIdentifier='{FileIdentifier}'",
+                    opLog.PageId?.ToString() ?? "null", opLog.PageNumber, opLog.FileIdentifier ?? "null");
+            }
+
+
             var instructions = new List<PageSyncInstruction>();
             var fileMap = files.ToDictionary(f => f.Name, f => f);
 
@@ -276,14 +301,18 @@ namespace MangaReaderDB.Controllers
             {
                 if (op.PageNumber <= 0)
                 {
-                    throw new Application.Exceptions.ValidationException($"PageOperation.PageNumber", $"Page number '{op.PageNumber}' for operation related to PageId '{op.PageId?.ToString() ?? "new"}' or FileIdentifier '{op.FileIdentifier}' must be positive.");
+                    string errorContext = op.PageId.HasValue ? $"PageId '{op.PageId.Value}'" : $"FileIdentifier '{op.FileIdentifier}'";
+                    throw new Application.Exceptions.ValidationException($"PageOperation.PageNumber", $"Page number '{op.PageNumber}' for operation related to {errorContext} must be positive.");
                 }
 
                 FileToUploadInfo? fileToUploadInfo = null;
                 if (!string.IsNullOrEmpty(op.FileIdentifier))
                 {
+                    _logger.LogInformation("Processing operation for FileIdentifier: '{FileIdentifier}'", op.FileIdentifier);
                     if (fileMap.TryGetValue(op.FileIdentifier, out var formFile))
                     {
+                        _logger.LogInformation("Found matching file in IFormFileCollection for FileIdentifier: '{FileIdentifier}'. OriginalFileName: {OriginalFileName}", op.FileIdentifier, formFile.FileName);
+
                         if (formFile.Length == 0) throw new Application.Exceptions.ValidationException(op.FileIdentifier, "File content cannot be empty.");
                         if (formFile.Length > 10 * 1024 * 1024) throw new Application.Exceptions.ValidationException(op.FileIdentifier, "File size cannot exceed 10MB.");
 
@@ -299,11 +328,16 @@ namespace MangaReaderDB.Controllers
                     }
                     else
                     {
-                        if (!op.PageId.HasValue)
-                        {
-                            throw new Application.Exceptions.ValidationException(op.FileIdentifier, $"File with identifier '{op.FileIdentifier}' not found in the uploaded files, but is required for a new page.");
-                        }
+                        _logger.LogWarning("File with identifier '{FileIdentifier}' was specified in pageOperationsJson but not found in the uploaded files for chapter {ChapterId}. PageId: {PageId}, PageNumber: {PageNumber}",
+                            op.FileIdentifier, chapterId, op.PageId?.ToString() ?? "new", op.PageNumber);
+                        // Đây là dòng 309 gây ra lỗi trong log của bạn
+                        throw new Application.Exceptions.ValidationException(op.FileIdentifier, $"File with identifier '{op.FileIdentifier}' was specified but not found in the uploaded files.");
                     }
+                }
+                else
+                {
+                    _logger.LogInformation("No FileIdentifier specified for operation with PageId: {PageId}, PageNumber: {PageNumber}. This page will not have its image updated/added unless it's an existing page and no image change is intended.",
+                       op.PageId?.ToString() ?? "new", op.PageNumber);
                 }
 
                 instructions.Add(new PageSyncInstruction
@@ -321,8 +355,6 @@ namespace MangaReaderDB.Controllers
             };
 
             var result = await Mediator.Send(command);
-            
-            // Bỏ new ApiResponse<> vì Ok() của BaseApiController sẽ tự làm.
             return Ok(result);
         }
     }
