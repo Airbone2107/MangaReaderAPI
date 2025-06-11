@@ -1,4 +1,6 @@
 using Domain.Enums;
+using Application.Common.DTOs.Tags;
+using Application.Common.Models; // Cần cho ResourceObject
 
 namespace Application.Common.DTOs.Mangas
 {
@@ -13,5 +15,8 @@ namespace Application.Common.DTOs.Mangas
         public bool IsLocked { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
+
+        // Thay đổi kiểu dữ liệu của Tags
+        public List<ResourceObject<TagInMangaAttributesDto>> Tags { get; set; } = new List<ResourceObject<TagInMangaAttributesDto>>();
     }
 } 

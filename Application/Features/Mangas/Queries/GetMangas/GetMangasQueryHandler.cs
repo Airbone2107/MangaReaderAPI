@@ -1,6 +1,8 @@
 using Application.Common.DTOs;
 using Application.Common.DTOs.Mangas;
-using Application.Common.Extensions; // Thêm using này
+using Application.Common.DTOs.Authors;
+using Application.Common.DTOs.Tags;
+using Application.Common.Extensions;
 using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
@@ -8,7 +10,8 @@ using Domain.Entities;
 using Domain.Enums;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using System.Linq.Expressions; // Cần cho Expression
+using System.Linq.Expressions;
+using System.Linq;
 
 namespace Application.Features.Mangas.Queries.GetMangas
 {
@@ -45,10 +48,14 @@ namespace Application.Features.Mangas.Queries.GetMangas
             {
                 predicate = predicate.And(m => m.ContentRating == request.ContentRatingFilter.Value);
             }
-            if (request.DemographicFilter.HasValue)
+            
+            // Cập nhật logic cho PublicationDemographicsFilter
+            if (request.PublicationDemographicsFilter != null && request.PublicationDemographicsFilter.Any())
             {
-                predicate = predicate.And(m => m.PublicationDemographic == request.DemographicFilter.Value);
+                // Đảm bảo rằng PublicationDemographic của Manga không null trước khi kiểm tra Contains
+                predicate = predicate.And(m => m.PublicationDemographic.HasValue && request.PublicationDemographicsFilter.Contains(m.PublicationDemographic.Value));
             }
+
             if (!string.IsNullOrWhiteSpace(request.OriginalLanguageFilter))
             {
                 predicate = predicate.And(m => m.OriginalLanguage == request.OriginalLanguageFilter);
@@ -56,10 +63,6 @@ namespace Application.Features.Mangas.Queries.GetMangas
             if (request.YearFilter.HasValue)
             {
                 predicate = predicate.And(m => m.Year == request.YearFilter.Value);
-            }
-            if (request.TagIdsFilter != null && request.TagIdsFilter.Any())
-            {
-                predicate = predicate.And(m => m.MangaTags.Any(mt => request.TagIdsFilter.Contains(mt.TagId)));
             }
             if (request.AuthorIdsFilter != null && request.AuthorIdsFilter.Any())
             {
@@ -71,6 +74,52 @@ namespace Application.Features.Mangas.Queries.GetMangas
             // {
             //     predicate = predicate.And(m => m.TranslatedMangas.Any(tm => tm.LanguageKey == request.LanguageFilter));
             // }
+
+            // --- Xử lý IncludedTags ---
+            if (request.IncludedTags != null && request.IncludedTags.Any())
+            {
+                // Mặc định là "AND" nếu không cung cấp hoặc rỗng
+                string includedMode = string.IsNullOrWhiteSpace(request.IncludedTagsMode) ? "AND" : request.IncludedTagsMode.ToUpper();
+
+                if (includedMode == "OR")
+                {
+                    _logger.LogInformation("Applying IncludedTags with OR mode. Tags: {Tags}", string.Join(",", request.IncludedTags));
+                    predicate = predicate.And(m => m.MangaTags.Any(mt => request.IncludedTags.Contains(mt.TagId)));
+                }
+                else // Mặc định là AND
+                {
+                    _logger.LogInformation("Applying IncludedTags with AND mode. Tags: {Tags}", string.Join(",", request.IncludedTags));
+                    // Manga phải chứa TẤT CẢ các tag trong request.IncludedTags
+                    // Tức là, với mỗi tagId trong request.IncludedTags, Manga phải có một MangaTag tương ứng.
+                    foreach (var tagId in request.IncludedTags)
+                    {
+                        predicate = predicate.And(m => m.MangaTags.Any(mt => mt.TagId == tagId));
+                    }
+                    // Cách viết khác cho AND mode:
+                    // predicate = predicate.And(m => request.IncludedTags.All(includedTagId => m.MangaTags.Any(mt => mt.TagId == includedTagId)));
+                }
+            }
+
+            // --- Xử lý ExcludedTags ---
+            if (request.ExcludedTags != null && request.ExcludedTags.Any())
+            {
+                // Mặc định là "OR" nếu không cung cấp hoặc rỗng
+                string excludedMode = string.IsNullOrWhiteSpace(request.ExcludedTagsMode) ? "OR" : request.ExcludedTagsMode.ToUpper();
+
+                if (excludedMode == "AND")
+                {
+                    _logger.LogInformation("Applying ExcludedTags with AND mode. Tags: {Tags}", string.Join(",", request.ExcludedTags));
+                    // Manga KHÔNG được chứa TẤT CẢ các tag trong request.ExcludedTags
+                    // Tức là, KHÔNG PHẢI (manga chứa TẤT CẢ các tag trong request.ExcludedTags)
+                    predicate = predicate.And(m => !request.ExcludedTags.All(excludedTagId => m.MangaTags.Any(mt => mt.TagId == excludedTagId)));
+                }
+                else // Mặc định là OR
+                {
+                    _logger.LogInformation("Applying ExcludedTags with OR mode. Tags: {Tags}", string.Join(",", request.ExcludedTags));
+                    // Manga KHÔNG được chứa BẤT KỲ tag nào trong request.ExcludedTags
+                    predicate = predicate.And(m => !m.MangaTags.Any(mt => request.ExcludedTags.Contains(mt.TagId)));
+                }
+            }
 
 
             // Build OrderBy function
@@ -91,58 +140,80 @@ namespace Application.Features.Mangas.Queries.GetMangas
                     orderBy = q => request.Ascending ? q.OrderBy(m => m.UpdatedAt) : q.OrderByDescending(m => m.UpdatedAt);
                     break;
             }
-
-            // Use GetPagedAsync with the constructed filter and orderby, and includes
+            
+            // Luôn include các navigation properties cần thiết cho tất cả các trường hợp (cover, author, tag)
+            // CoverArts cũng cần cho Yêu cầu 1
             var pagedMangas = await _unitOfWork.MangaRepository.GetPagedAsync(
                 request.Offset,
                 request.Limit,
                 predicate,
                 orderBy,
-                // Include necessary navigations for mapping to MangaDto
-                // Ensure these includes are configured in GenericRepository.GetPagedAsync
                 includeProperties: "MangaTags.Tag.TagGroup,MangaAuthors.Author,CoverArts"
             );
 
             var mangaResourceObjects = new List<ResourceObject<MangaAttributesDto>>();
+            bool includeCoverArt = request.Includes?.Contains("cover_art", StringComparer.OrdinalIgnoreCase) ?? false;
+            bool includeAuthorFull = request.Includes?.Contains("author", StringComparer.OrdinalIgnoreCase) ?? false;
+            //bool includeArtist = request.Includes?.Contains("artist", StringComparer.OrdinalIgnoreCase) ?? false; // Sẽ xử lý chung với includeAuthorFull
+
             foreach (var manga in pagedMangas.Items)
             {
                 var mangaAttributes = _mapper.Map<MangaAttributesDto>(manga);
+                
+                // Cập nhật cách populate Tags
+                mangaAttributes.Tags = manga.MangaTags
+                    .Select(mt => new ResourceObject<TagInMangaAttributesDto> // Sử dụng TagInMangaAttributesDto
+                    {
+                        Id = mt.Tag.TagId.ToString(),
+                        Type = "tag",
+                        Attributes = _mapper.Map<TagInMangaAttributesDto>(mt.Tag), // Map sang TagInMangaAttributesDto
+                        Relationships = null // Không có relationships cho tag khi nhúng trong manga
+                    })
+                    .ToList();
+
                 var relationships = new List<RelationshipObject>();
 
+                // Xử lý Authors/Artists
                 if (manga.MangaAuthors != null)
                 {
                     foreach (var mangaAuthor in manga.MangaAuthors)
                     {
-                        if (mangaAuthor.Author != null) {
-                             relationships.Add(new RelationshipObject
-                            {
-                                Id = mangaAuthor.Author.AuthorId.ToString(),
-                                Type = mangaAuthor.Role == MangaStaffRole.Author ? "author" : "artist"
-                            });
-                        }
-                    }
-                }
-                if (manga.MangaTags != null)
-                {
-                     foreach (var mangaTag in manga.MangaTags)
-                    {
-                        if (mangaTag.Tag != null) {
+                        if (mangaAuthor.Author != null) 
+                        {
+                            var relationshipType = mangaAuthor.Role == MangaStaffRole.Author ? "author" : "artist";
+                            // Yêu cầu: Khi Include Author trong endpoint danh sách manga/chi tiết manga thì thật ra phải trả đầy đủ thông tin cho cả type author và type artist luôn.
+                            // Nghĩa là nếu `includes` chứa "author", thì cả "author" và "artist" đều được populate attributes.
+                            bool shouldIncludeAttributesForThisRelationship = includeAuthorFull;
+                            
                             relationships.Add(new RelationshipObject
                             {
-                                Id = mangaTag.Tag.TagId.ToString(),
-                                Type = "tag"
+                                Id = mangaAuthor.Author.AuthorId.ToString(),
+                                Type = relationshipType,
+                                Attributes = shouldIncludeAttributesForThisRelationship 
+                                    ? new { 
+                                        mangaAuthor.Author.Name, 
+                                        mangaAuthor.Author.Biography 
+                                        // KHÔNG bao gồm CreatedAt, UpdatedAt
+                                      } 
+                                    : null
                             });
                         }
                     }
                 }
-                var primaryCover = manga.CoverArts?.FirstOrDefault(); 
-                if (primaryCover != null)
+                
+                // Xử lý CoverArt
+                if (includeCoverArt)
                 {
-                    relationships.Add(new RelationshipObject
+                    var primaryCover = manga.CoverArts?.OrderByDescending(ca => ca.CreatedAt).FirstOrDefault(); 
+                    if (primaryCover != null && !string.IsNullOrEmpty(primaryCover.PublicId))
                     {
-                        Id = primaryCover.CoverId.ToString(),
-                        Type = "cover_art"
-                    });
+                        relationships.Add(new RelationshipObject
+                        {
+                            Id = primaryCover.PublicId, // Sử dụng PublicId
+                            Type = "cover_art",
+                            Attributes = null // Không yêu cầu attributes cho cover trong danh sách manga
+                        });
+                    }
                 }
 
                 mangaResourceObjects.Add(new ResourceObject<MangaAttributesDto>

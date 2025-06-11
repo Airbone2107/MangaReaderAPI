@@ -69,7 +69,9 @@ namespace Application.Features.Tags.Queries.GetTags
             var tagResourceObjects = new List<ResourceObject<TagAttributesDto>>();
             foreach(var tag in pagedTags.Items)
             {
-                var attributes = _mapper.Map<TagAttributesDto>(tag);
+                // TagAttributesDto bây giờ đã bỏ TagGroupId, có CreatedAt, UpdatedAt
+                var attributes = _mapper.Map<TagAttributesDto>(tag); 
+                
                 var relationships = new List<RelationshipObject>();
                 if (tag.TagGroup != null)
                 {
@@ -79,12 +81,15 @@ namespace Application.Features.Tags.Queries.GetTags
                         Type = "tag_group"
                     });
                 }
+                // Đảm bảoCreatedAt và UpdatedAt được map chính xác vào attributes
+                // mapping profile đã xử lý việc này.
+
                 tagResourceObjects.Add(new ResourceObject<TagAttributesDto>
                 {
                     Id = tag.TagId.ToString(),
                     Type = "tag",
-                    Attributes = attributes,
-                    Relationships = relationships.Any() ? relationships : null
+                    Attributes = attributes, // Sẽ chứa CreatedAt, UpdatedAt
+                    Relationships = relationships.Any() ? relationships : null // Sẽ có relationship với tag_group
                 });
             }
             return new PagedResult<ResourceObject<TagAttributesDto>>(tagResourceObjects, pagedTags.Total, request.Offset, request.Limit);

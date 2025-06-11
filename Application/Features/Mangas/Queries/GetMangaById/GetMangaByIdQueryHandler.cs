@@ -1,10 +1,14 @@
+using Application.Common.DTOs.Authors;
 using Application.Common.DTOs.Mangas;
+using Application.Common.DTOs.Tags;
 using Application.Common.Models;
 using Application.Contracts.Persistence;
 using AutoMapper;
 using Domain.Enums;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Application.Features.Mangas.Queries.GetMangaById
 {
@@ -34,7 +38,20 @@ namespace Application.Features.Mangas.Queries.GetMangaById
             }
 
             var mangaAttributes = _mapper.Map<MangaAttributesDto>(manga);
+            
+            mangaAttributes.Tags = manga.MangaTags
+                .Select(mt => new ResourceObject<TagInMangaAttributesDto>
+                {
+                    Id = mt.Tag.TagId.ToString(),
+                    Type = "tag",
+                    Attributes = _mapper.Map<TagInMangaAttributesDto>(mt.Tag),
+                    Relationships = null
+                })
+                .ToList();
+            
             var relationships = new List<RelationshipObject>();
+
+            bool includeAuthorFull = request.Includes?.Contains("author", StringComparer.OrdinalIgnoreCase) ?? false;
 
             if (manga.MangaAuthors != null)
             {
@@ -42,37 +59,32 @@ namespace Application.Features.Mangas.Queries.GetMangaById
                 {
                     if (mangaAuthor.Author != null)
                     {
+                        var relationshipType = mangaAuthor.Role == MangaStaffRole.Author ? "author" : "artist";
+                        bool shouldIncludeAttributesForThisRelationship = includeAuthorFull;
+                        
                         relationships.Add(new RelationshipObject
                         {
                             Id = mangaAuthor.Author.AuthorId.ToString(),
-                            Type = mangaAuthor.Role == MangaStaffRole.Author ? "author" : "artist"
-                        });
-                    }
-                }
-            }
-
-            if (manga.MangaTags != null)
-            {
-                foreach (var mangaTag in manga.MangaTags)
-                {
-                    if (mangaTag.Tag != null)
-                    {
-                        relationships.Add(new RelationshipObject
-                        {
-                            Id = mangaTag.Tag.TagId.ToString(),
-                            Type = "tag" 
+                            Type = relationshipType,
+                            Attributes = shouldIncludeAttributesForThisRelationship 
+                                ? new { 
+                                    mangaAuthor.Author.Name, 
+                                    mangaAuthor.Author.Biography
+                                  } 
+                                : null
                         });
                     }
                 }
             }
             
-            var primaryCover = manga.CoverArts?.FirstOrDefault(); 
+            var primaryCover = manga.CoverArts?.OrderByDescending(ca => ca.CreatedAt).FirstOrDefault(); 
             if (primaryCover != null)
             {
                 relationships.Add(new RelationshipObject
                 {
                     Id = primaryCover.CoverId.ToString(),
-                    Type = "cover_art"
+                    Type = "cover_art",
+                    Attributes = null
                 });
             }
             

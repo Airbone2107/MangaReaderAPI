@@ -1,4 +1,5 @@
-// MangaReaderDB/Controllers/ChaptersController.cs
+// File: MangaReaderDB/Controllers/ChaptersController.cs
+// comment
 using Application.Common.DTOs.Chapters;
 using Application.Common.Models; // For ResourceObject
 using Application.Common.Responses;
@@ -15,15 +16,8 @@ using Application.Features.Chapters.Commands.UploadChapterPages;
 using Application.Features.Chapters.Queries.GetChapterById;
 using Application.Features.Chapters.Queries.GetChapterPages;
 using Application.Features.Chapters.Queries.GetChaptersByTranslatedManga;
-using FluentValidation; // Giữ using này cho IValidator
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Text.Json;
-using System.Threading.Tasks;
 
 namespace MangaReaderDB.Controllers
 {
@@ -161,7 +155,7 @@ namespace MangaReaderDB.Controllers
 
             return CreatedAtAction(
                 actionName: nameof(ChapterPagesController.UploadChapterPageImage),
-                controllerName: "ChapterPages",
+                controllerName: "ChapterPages", // Tên controller mà không có "Controller" ở cuối
                 routeValues: new { pageId = pageId },
                 value: new ApiResponse<object>(responsePayload)
             );
@@ -203,7 +197,7 @@ namespace MangaReaderDB.Controllers
 
                 if (file.Length == 0)
                     throw new Application.Exceptions.ValidationException($"files[{i}]", "File content cannot be empty.");
-                if (file.Length > 10 * 1024 * 1024)
+                if (file.Length > 10 * 1024 * 1024) // 10MB limit
                     throw new Application.Exceptions.ValidationException($"files[{i}]", "File size cannot exceed 10MB.");
 
                 var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" };
@@ -237,34 +231,35 @@ namespace MangaReaderDB.Controllers
             };
 
             var result = await Mediator.Send(command);
-
-            // Bỏ new ApiResponse<> vì Ok() của BaseApiController sẽ tự làm.
-            return Ok(result);
+            return Ok(result); // BaseApiController.Ok sẽ wrap nó trong ApiResponse
         }
 
         [HttpPut("{chapterId:guid}/pages")]
         [ProducesResponseType(typeof(ApiResponse<List<ChapterPageAttributesDto>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> SyncChapterPages(Guid chapterId, [FromForm] string pageOperationsJson, [FromForm] IFormFileCollection files)
+        public async Task<IActionResult> SyncChapterPages(Guid chapterId, [FromForm] string pageOperationsJson /* Bỏ , [FromForm] IFormFileCollection files */)
         {
+            // Lấy files trực tiếp từ Request.Form
+            var formFiles = Request.Form.Files;
+
             _logger.LogInformation("SyncChapterPages called for ChapterId: {ChapterId}", chapterId);
             _logger.LogInformation("Received pageOperationsJson: {PageOperationsJson}", pageOperationsJson);
 
-            if (files != null && files.Any())
+            if (formFiles != null && formFiles.Any())
             {
-                _logger.LogInformation("Received {FilesCount} files in IFormFileCollection:", files.Count);
-                foreach (var f in files)
+                _logger.LogInformation("Received {FilesCount} files in Request.Form.Files:", formFiles.Count);
+                foreach (var f in formFiles)
                 {
-                    _logger.LogInformation("- File Name (from IFormFile.Name): '{FormFileName}', OriginalFileName: '{OriginalFileName}', ContentType: '{ContentType}', Length: {Length} bytes",
+                    _logger.LogInformation("- File Name (from IFormFile.Name - should be FileIdentifier): '{FormFileName}', OriginalFileName: '{OriginalFileName}', ContentType: '{ContentType}', Length: {Length} bytes",
                         f.Name, f.FileName, f.ContentType, f.Length);
                 }
             }
             else
             {
-                _logger.LogWarning("No files received in IFormFileCollection.");
+                _logger.LogWarning("No files received in Request.Form.Files.");
             }
-
+            
             if (string.IsNullOrEmpty(pageOperationsJson))
             {
                 throw new Application.Exceptions.ValidationException("pageOperationsJson", "Page operations JSON is required.");
@@ -283,20 +278,33 @@ namespace MangaReaderDB.Controllers
 
             if (pageOperations == null)
             {
+                 _logger.LogError("pageOperationsJson deserialized to null.");
                 throw new Application.Exceptions.ValidationException("pageOperationsJson", "Page operations cannot be null after deserialization.");
             }
-
-            _logger.LogInformation("Deserialized {PageOperationsCount} page operations from JSON:", pageOperations.Count);
+             _logger.LogInformation("Deserialized {PageOperationsCount} page operations from JSON:", pageOperations.Count);
             foreach (var opLog in pageOperations)
             {
                 _logger.LogInformation("- Operation: PageId='{PageId}', PageNumber={PageNumber}, FileIdentifier='{FileIdentifier}'",
                     opLog.PageId?.ToString() ?? "null", opLog.PageNumber, opLog.FileIdentifier ?? "null");
             }
 
+            // Tạo fileMap một cách an toàn hơn, ưu tiên file đầu tiên nếu có trùng tên form field.
+            // Tuy nhiên, client NÊN đảm bảo mỗi FileIdentifier là duy nhất cho mỗi file trong request.
+            var fileMap = new Dictionary<string, IFormFile>();
+            if (formFiles != null)
+            {
+                foreach (var file in formFiles)
+                {
+                    if (!fileMap.TryAdd(file.Name, file))
+                    {
+                        _logger.LogWarning("Duplicate form field name (FileIdentifier) detected: '{FileIdentifier}'. Only the first file with this identifier will be used.", file.Name);
+                        // Cân nhắc: Có nên throw lỗi ở đây để client sửa không?
+                        // throw new Application.Exceptions.ValidationException($"Duplicate FileIdentifier '{file.Name}' received. Each file must have a unique FileIdentifier as its form field name.");
+                    }
+                }
+            }
 
             var instructions = new List<PageSyncInstruction>();
-            var fileMap = files.ToDictionary(f => f.Name, f => f);
-
             foreach (var op in pageOperations)
             {
                 if (op.PageNumber <= 0)
@@ -304,45 +312,43 @@ namespace MangaReaderDB.Controllers
                     string errorContext = op.PageId.HasValue ? $"PageId '{op.PageId.Value}'" : $"FileIdentifier '{op.FileIdentifier}'";
                     throw new Application.Exceptions.ValidationException($"PageOperation.PageNumber", $"Page number '{op.PageNumber}' for operation related to {errorContext} must be positive.");
                 }
-
                 FileToUploadInfo? fileToUploadInfo = null;
                 if (!string.IsNullOrEmpty(op.FileIdentifier))
                 {
                     _logger.LogInformation("Processing operation for FileIdentifier: '{FileIdentifier}'", op.FileIdentifier);
-                    if (fileMap.TryGetValue(op.FileIdentifier, out var formFile))
+                    if (fileMap.TryGetValue(op.FileIdentifier, out var formFileFromMap))
                     {
-                        _logger.LogInformation("Found matching file in IFormFileCollection for FileIdentifier: '{FileIdentifier}'. OriginalFileName: {OriginalFileName}", op.FileIdentifier, formFile.FileName);
-
-                        if (formFile.Length == 0) throw new Application.Exceptions.ValidationException(op.FileIdentifier, "File content cannot be empty.");
-                        if (formFile.Length > 10 * 1024 * 1024) throw new Application.Exceptions.ValidationException(op.FileIdentifier, "File size cannot exceed 10MB.");
-
+                        _logger.LogInformation("Found matching file in IFormFileCollection for FileIdentifier: '{FileIdentifier}'. OriginalFileName: {OriginalFileName}", op.FileIdentifier, formFileFromMap.FileName);
+                        
+                        if (formFileFromMap.Length == 0) throw new Application.Exceptions.ValidationException(op.FileIdentifier, "File content cannot be empty.");
+                        if (formFileFromMap.Length > 10 * 1024 * 1024) throw new Application.Exceptions.ValidationException(op.FileIdentifier, "File size cannot exceed 10MB.");
+                        
                         var memoryStream = new MemoryStream();
-                        await formFile.CopyToAsync(memoryStream);
+                        await formFileFromMap.CopyToAsync(memoryStream);
                         memoryStream.Position = 0;
                         fileToUploadInfo = new FileToUploadInfo
                         {
                             ImageStream = memoryStream,
-                            OriginalFileName = formFile.FileName,
-                            ContentType = formFile.ContentType
+                            OriginalFileName = formFileFromMap.FileName,
+                            ContentType = formFileFromMap.ContentType
                         };
                     }
                     else
                     {
-                        _logger.LogWarning("File with identifier '{FileIdentifier}' was specified in pageOperationsJson but not found in the uploaded files for chapter {ChapterId}. PageId: {PageId}, PageNumber: {PageNumber}",
+                        _logger.LogWarning("File with identifier '{FileIdentifier}' was specified in pageOperationsJson but not found in the uploaded files (Request.Form.Files) for chapter {ChapterId}. PageId: {PageId}, PageNumber: {PageNumber}",
                             op.FileIdentifier, chapterId, op.PageId?.ToString() ?? "new", op.PageNumber);
-                        // Đây là dòng 309 gây ra lỗi trong log của bạn
                         throw new Application.Exceptions.ValidationException(op.FileIdentifier, $"File with identifier '{op.FileIdentifier}' was specified but not found in the uploaded files.");
                     }
                 }
                 else
                 {
-                    _logger.LogInformation("No FileIdentifier specified for operation with PageId: {PageId}, PageNumber: {PageNumber}. This page will not have its image updated/added unless it's an existing page and no image change is intended.",
+                     _logger.LogInformation("No FileIdentifier specified for operation with PageId: {PageId}, PageNumber: {PageNumber}. This page will not have its image updated/added unless it's an existing page and no image change is intended.",
                        op.PageId?.ToString() ?? "new", op.PageNumber);
                 }
 
                 instructions.Add(new PageSyncInstruction
                 {
-                    PageId = op.PageId ?? Guid.NewGuid(),
+                    PageId = op.PageId ?? Guid.NewGuid(), // Nếu PageId null (trang mới), sẽ tạo Guid mới trong controller/handler
                     DesiredPageNumber = op.PageNumber,
                     ImageFileToUpload = fileToUploadInfo
                 });
@@ -355,11 +361,11 @@ namespace MangaReaderDB.Controllers
             };
 
             var result = await Mediator.Send(command);
-            return Ok(result);
+            return Ok(result); // BaseApiController.Ok sẽ wrap
         }
     }
 
-    [Route("chapterpages")]
+    [Route("chapterpages")] // Đảm bảo controller này có route riêng
     public class ChapterPagesController : BaseApiController
     {
         private readonly FluentValidation.IValidator<UpdateChapterPageDto> _updateChapterPageDtoValidator;
@@ -374,7 +380,7 @@ namespace MangaReaderDB.Controllers
         }
 
         [HttpPost("{pageId:guid}/image")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)] // Trả về OK thay vì Created
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UploadChapterPageImage(Guid pageId, IFormFile file)
@@ -383,7 +389,7 @@ namespace MangaReaderDB.Controllers
             {
                 throw new Application.Exceptions.ValidationException("file", "File is required.");
             }
-            if (file.Length > 5 * 1024 * 1024)
+            if (file.Length > 5 * 1024 * 1024) // 5MB limit
             {
                 throw new Application.Exceptions.ValidationException("file", "File size cannot exceed 5MB.");
             }
@@ -391,7 +397,7 @@ namespace MangaReaderDB.Controllers
             var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
             if (string.IsNullOrEmpty(ext) || !allowedExtensions.Contains(ext))
             {
-                throw new Application.Exceptions.ValidationException("file", "Invalid file type. Allowed types are: " + string.Join(", ", allowedExtensions));
+                 throw new Application.Exceptions.ValidationException("file", "Invalid file type. Allowed types are: " + string.Join(", ", allowedExtensions));
             }
 
             using var stream = file.OpenReadStream();
@@ -405,7 +411,7 @@ namespace MangaReaderDB.Controllers
             var publicId = await Mediator.Send(command);
 
             var responsePayload = new { PublicId = publicId };
-            return Ok(responsePayload);
+            return Ok(responsePayload); // Sử dụng Ok từ BaseApiController
         }
 
         [HttpPut("{pageId:guid}/details")]

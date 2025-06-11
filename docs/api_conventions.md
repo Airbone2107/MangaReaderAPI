@@ -37,7 +37,7 @@ Một số endpoint có thể có đường dẫn tùy chỉnh (absolute path) b
 Các endpoints trả về danh sách đều hỗ trợ phân trang với các tham số:
 
 - `offset`: Vị trí bắt đầu (mặc định: 0)
-- `limit`: Số lượng tối đa kết quả trả về (mặc định và tối đa: 20)
+- `limit`: Số lượng tối đa kết quả trả về (mặc định: 20, tối đa: 100)
 
 Ví dụ:
 
@@ -45,18 +45,34 @@ Ví dụ:
 GET /mangas?offset=20&limit=10
 ```
 
-## 5. Filtering và Sorting
+## 5. Filtering, Sorting và Includes
 
-Các endpoints trả về danh sách hỗ trợ lọc và sắp xếp:
+### 5.1. Endpoint `GET /mangas` (Danh sách Manga)
 
-- Filtering: Tùy thuộc vào từng endpoint, ví dụ `titleFilter`, `statusFilter`
-- Sorting: Sử dụng tham số `orderBy` và `ascending`
+-   **Filtering:**
+    -   `titleFilter` (string): Lọc theo tiêu đề.
+    -   `statusFilter` (enum `MangaStatus`): Lọc theo trạng thái.
+    -   `contentRatingFilter` (enum `ContentRating`): Lọc theo đánh giá nội dung.
+    -   `publicationDemographicsFilter[]` (list of enum `PublicationDemographic`): Lọc theo một hoặc nhiều đối tượng độc giả.
+    -   `originalLanguageFilter` (string): Lọc theo ngôn ngữ gốc.
+    -   `yearFilter` (int): Lọc theo năm xuất bản.
+    -   `authorIdsFilter[]` (list of GUID): Lọc manga chứa BẤT KỲ author nào trong danh sách ID.
+    -   **Lọc Tag Nâng Cao:**
+        *   `includedTags[]` (array of GUIDs): Lọc các manga PHẢI chứa các tag được chỉ định.
+        *   `includedTagsMode` (string: "AND" | "OR", mặc định "AND"): Chế độ cho `includedTags[]`.
+        *   `excludedTags[]` (array of GUIDs): Lọc các manga KHÔNG ĐƯỢC chứa các tag được chỉ định.
+        *   `excludedTagsMode` (string: "AND" | "OR", mặc định "OR"): Chế độ cho `excludedTags[]`.
+-   **Sorting:** Sử dụng tham số `orderBy` (ví dụ: `updatedAt`, `title`, `year`, `createdAt`) và `ascending` (boolean, `true` hoặc `false`).
+-   **Includes:** Sử dụng tham số `includes[]` để yêu cầu thêm dữ liệu liên quan. Các giá trị hỗ trợ:
+    -   `cover_art`: Trả về `PublicId` của ảnh bìa mới nhất trong `relationships` của mỗi Manga.
+    -   `author`: Trả về thông tin chi tiết (attributes chỉ gồm `name` và `biography`) của tác giả (role 'Author') và họa sĩ (role 'Artist') trong `relationships` của mỗi Manga.
+    *Ví dụ:* `GET /mangas?includes[]=cover_art&includes[]=author`
 
-Ví dụ:
+### 5.2. Endpoint `GET /mangas/{id}` (Chi tiết Manga)
 
-```
-GET /mangas?statusFilter=ongoing&orderBy=title&ascending=true
-```
+-   **Includes:** Sử dụng tham số `includes[]` để yêu cầu thêm dữ liệu liên quan. Các giá trị hỗ trợ:
+    -   `author`: Trả về thông tin chi tiết (attributes chỉ gồm `name` và `biography`) của tác giả (role 'Author') và họa sĩ (role 'Artist') trong `relationships` của Manga.
+    *Ví dụ:* `GET /mangas/{id}?includes[]=author`
 
 ## 6. Cấu Trúc Response Body (JSON)
 
@@ -66,23 +82,33 @@ Tất cả các response thành công (200 OK, 201 Created) trả về dữ li�
 
 ```json
 {
-  "result": "ok", // Luôn là "ok" cho response thành công
-  "response": "entity", // Loại response, ví dụ "entity" hoặc "collection"
+  "result": "ok",
+  "response": "entity",
   "data": {
     "id": "string (GUID)",
     "type": "string (loại của resource, ví dụ: 'manga', 'author')",
     "attributes": {
-      // Các thuộc tính cụ thể của resource (trừ id và relationships)
+      // Các thuộc tính cụ thể của resource.
+      // Đối với Manga, trường "tags" sẽ chứa danh sách các TagInMangaAttributesDto chi tiết.
       // Ví dụ cho MangaAttributesDto:
-      // "title": "One Piece",
-      // "originalLanguage": "ja",
-      // "status": "Ongoing",
-      // ...
+      //   "title": "One Piece",
+      //   "tags": [
+      //     {
+      //       "id": "tag-guid-1",
+      //       "type": "tag",
+      //       "attributes": { "name": "Action", "tagGroupName": "Genre" },
+      //       "relationships": null
+      //     }
+      //   ],
+      //   ...
     },
-    "relationships": [
+    "relationships": [ // (Tùy chọn)
       {
-        "id": "string (GUID của entity liên quan)",
-        "type": "string (loại của MỐI QUAN HỆ hoặc VAI TRÒ, ví dụ: 'author', 'artist', 'tag', 'cover_art')"
+        "id": "string (ID của entity liên quan, hoặc PublicId cho cover_art)",
+        "type": "string (loại của MỐI QUAN HỆ hoặc VAI TRÒ)",
+        "attributes": { // (Tùy chọn, chỉ có nếu được include)
+          // Thuộc tính chi tiết của entity liên quan (chỉ name và biography cho author/artist)
+        }
       }
       // ... các relationships khác ...
     ]
@@ -90,21 +116,14 @@ Tất cả các response thành công (200 OK, 201 Created) trả về dữ li�
 }
 ```
 
-*   **`data.id`**: ID của tài nguyên chính (luôn là GUID dưới dạng chuỗi).
-*   **`data.type`**: Loại của tài nguyên chính (ví dụ: `"manga"`, `"author"`, `"tag"`, `"chapter"`, `"cover_art"`, `"translated_manga"`, `"tag_group"`, `"chapter_page"`). Được viết bằng snake_case, số ít.
-*   **`data.attributes`**: Một object chứa tất cả các thuộc tính của tài nguyên (tương ứng với `...AttributesDto`).
-*   **`data.relationships`**: (Tùy chọn, có thể không có nếu không có mối quan hệ) Một mảng các đối tượng `RelationshipObject`.
-    *   **`id`**: ID của thực thể liên quan.
-    *   **`type`**: Mô tả vai trò hoặc bản chất của mối quan hệ đó đối với thực thể gốc.
-        *   Ví dụ, đối với một Manga:
-            *   Relationship tới Author với vai trò `author`: `{ "id": "author-guid", "type": "author" }`
-            *   Relationship tới Author với vai trò `artist`: `{ "id": "artist-guid", "type": "artist" }`
-            *   Relationship tới Tag: `{ "id": "tag-guid", "type": "tag" }`
-            *   Relationship tới CoverArt chính: `{ "id": "cover_art-guid", "type": "cover_art" }`
-        *   Đối với một Chapter:
-            *   Relationship tới User (uploader): `{ "id": "user-id", "type": "user" }`
-            *   Relationship tới Manga (manga gốc của chapter, thông qua TranslatedManga): `{ "id": "manga-guid", "type": "manga" }`
-            *   Relationship tới TranslatedManga (bản dịch chứa chapter này): `{ "id": "translated-manga-guid", "type": "translated_manga" }`
+*   **`data.id`**: ID của tài nguyên chính.
+*   **`data.type`**: Loại của tài nguyên chính.
+*   **`data.attributes`**: Object chứa các thuộc tính của tài nguyên.
+    *   **Đối với Manga (`type: "manga"`)**: `data.attributes` sẽ chứa một mảng `tags`. Mỗi phần tử trong mảng `tags` là một `ResourceObject<TagInMangaAttributesDto>` đơn giản, bao gồm `id`, `type: "tag"`, `attributes` (chỉ chứa `name` và `tagGroupName`), và `relationships` luôn là `null`.
+*   **`data.relationships`**: Mảng các đối tượng `RelationshipObject`.
+    *   **`id`**: ID của thực thể liên quan. **Đặc biệt:** Nếu `type` là `"cover_art"` (cho danh sách manga), `id` ở đây sẽ là `PublicId` của ảnh bìa.
+    *   **`type`**: Mô tả vai trò/bản chất của mối quan hệ.
+    *   **`attributes`**: (Tùy chọn) Nếu client yêu cầu `includes` (ví dụ: `includes[]=author`), trường này sẽ chứa object attributes của entity liên quan (ví dụ: `{ name: "Author Name", biography: "..." }`). Chỉ có `name` và `biography` được bao gồm cho `author` và `artist`, không có `createdAt` và `updatedAt`. Nếu không include, trường này sẽ không có hoặc là `null`.
 
 ### 6.2. Response Cho Danh Sách Đối Tượng (Collection)
 
@@ -116,8 +135,8 @@ Tất cả các response thành công (200 OK, 201 Created) trả về dữ li�
     {
       "id": "string (GUID)",
       "type": "string (loại của resource)",
-      "attributes": { /* ... */ },
-      "relationships": [ /* ... */ ]
+      "attributes": { /* ... xem mục 6.1 ... */ },
+      "relationships": [ /* ... xem mục 6.1 ... */ ]
     }
     // ... các resource objects khác ...
   ],
@@ -129,93 +148,66 @@ Tất cả các response thành công (200 OK, 201 Created) trả về dữ li�
 *   Trường `data` là một mảng các `ResourceObject` như mô tả ở mục 6.1.
 *   `limit`, `offset`, `total` là các thông tin phân trang.
 
-### 6.3. Ví dụ Response Cho Manga
+### 6.3. Ví dụ Response Cho Manga (Chi tiết hoặc trong danh sách)
 
 ```json
 {
   "result": "ok",
-  "response": "entity",
+  "response": "entity", // Hoặc "collection" nếu là danh sách
   "data": {
     "id": "123e4567-e89b-12d3-a456-426614174000",
     "type": "manga",
     "attributes": {
-      "title": "One Piece",
+      "title": "Komi Can't Communicate",
       "originalLanguage": "ja",
       "publicationDemographic": "Shounen",
       "status": "Ongoing",
-      "year": 1997,
+      "year": 2016,
       "contentRating": "Safe",
       "isLocked": false,
       "createdAt": "2023-01-01T00:00:00Z",
-      "updatedAt": "2023-06-01T00:00:00Z"
+      "updatedAt": "2023-06-01T00:00:00Z",
+      "tags": [
+        {
+          "id": "tag-guid-comedy",
+          "type": "tag",
+          "attributes": {
+            "name": "Comedy",
+            "tagGroupName": "Genre"
+          },
+          "relationships": null
+        },
+        {
+          "id": "tag-guid-school-life",
+          "type": "tag",
+          "attributes": {
+            "name": "School Life",
+            "tagGroupName": "Theme"
+          },
+          "relationships": null
+        }
+      ]
     },
     "relationships": [
       {
-        "id": "223e4567-e89b-12d3-a456-426614174001",
-        "type": "author"
+        "id": "author-artist-guid-1", // ID của Author/Artist
+        "type": "author", // hoặc "artist"
+        // "attributes" sẽ có ở đây nếu client yêu cầu includes[]=author (hoặc artist)
+        // Ví dụ, nếu includes[]=author:
+        // "attributes": {
+        //   "name": "Tomohito Oda",
+        //   "biography": null
+        //   // KHÔNG bao gồm CreatedAt, UpdatedAt
+        // }
       },
       {
-        "id": "223e4567-e89b-12d3-a456-426614174001",
-        "type": "artist"
-      },
-      {
-        "id": "323e4567-e89b-12d3-a456-426614174002",
-        "type": "tag"
-      },
-      {
-        "id": "423e4567-e89b-12d3-a456-426614174003",
+        "id": "cover-art-public-id-xyz", // Public ID của cover nếu GET /mangas và includes[]=cover_art
+                                        // Hoặc GUID của CoverArt entity nếu là GET /mangas/{id}
         "type": "cover_art"
+        // "attributes" của cover_art không được include mặc định trong relationship này
       }
     ]
   }
-}
-```
-
-### 6.4. Ví dụ Response Cho Danh Sách Tags
-
-```json
-{
-  "result": "ok",
-  "response": "collection",
-  "data": [
-    {
-      "id": "123e4567-e89b-12d3-a456-426614174000",
-      "type": "tag",
-      "attributes": {
-        "name": "Action",
-        "tagGroupId": "223e4567-e89b-12d3-a456-426614174001",
-        "tagGroupName": "Genres",
-        "createdAt": "2023-01-01T00:00:00Z",
-        "updatedAt": "2023-01-01T00:00:00Z"
-      },
-      "relationships": [
-        {
-          "id": "223e4567-e89b-12d3-a456-426614174001",
-          "type": "tag_group"
-        }
-      ]
-    },
-    {
-      "id": "123e4567-e89b-12d3-a456-426614174002",
-      "type": "tag",
-      "attributes": {
-        "name": "Adventure",
-        "tagGroupId": "223e4567-e89b-12d3-a456-426614174001",
-        "tagGroupName": "Genres",
-        "createdAt": "2023-01-01T00:00:00Z",
-        "updatedAt": "2023-01-01T00:00:00Z"
-      },
-      "relationships": [
-        {
-          "id": "223e4567-e89b-12d3-a456-426614174001",
-          "type": "tag_group"
-        }
-      ]
-    }
-  ],
-  "limit": 10,
-  "offset": 0,
-  "total": 50
 }
 ```
 
@@ -226,13 +218,16 @@ Tất cả các response thành công (200 OK, 201 Created) trả về dữ li�
   "result": "error",
   "errors": [
     {
-      "code": 404,
-      "title": "Not Found",
-      "detail": "Manga with ID '123e4567-e89b-12d3-a456-426614174000' was not found."
+      "status": 404, // HTTP status code
+      "title": "Not Found", // Tóm tắt lỗi
+      "detail": "Manga with ID '123...' was not found." // Chi tiết lỗi (có thể null)
+      // "id": "unique-error-code", // (Tùy chọn) Mã lỗi duy nhất
+      // "context": { ... } // (Tùy chọn) Thông tin bổ sung
     }
   ]
 }
 ```
+*Lưu ý: trường `code` trong ví dụ cũ đã được đổi thành `status` để nhất quán với JSON:API spec và HTTP status codes.*
 
 ## 8. Validation Errors
 
@@ -241,20 +236,15 @@ Tất cả các response thành công (200 OK, 201 Created) trả về dữ li�
   "result": "error",
   "errors": [
     {
-      "code": 400,
-      "title": "Validation Error",
-      "detail": "The Title field is required.",
-      "source": {
-        "field": "Title"
-      }
+      "status": 400,
+      "title": "Title", // Tên trường gây lỗi (hoặc "Validation Error" chung)
+      "detail": "The Title field is required." 
+      // "context": { "field": "Title" } // Có thể dùng context để chỉ rõ trường
     },
     {
-      "code": 400,
-      "title": "Validation Error",
-      "detail": "The OriginalLanguage field is required.",
-      "source": {
-        "field": "OriginalLanguage"
-      }
+      "status": 400,
+      "title": "OriginalLanguage",
+      "detail": "The OriginalLanguage field is required."
     }
   ]
 }
@@ -262,27 +252,28 @@ Tất cả các response thành công (200 OK, 201 Created) trả về dữ li�
 
 ## 9. Các Loại Relationship Type
 
-Dưới đây là danh sách các giá trị `type` được sử dụng trong các đối tượng `ResourceObject` (cho chính tài nguyên) và `RelationshipObject` (cho mối quan hệ):
+| Giá trị `type` | Mô tả                                       | Nơi xuất hiện                                  | ID trong Relationship |
+|----------------|---------------------------------------------|------------------------------------------------|-----------------------|
+| `author`       | Tác giả của manga                            | `RelationshipObject` (Manga -> Author)         | GUID của Author        |
+| `artist`       | Họa sĩ của manga                             | `RelationshipObject` (Manga -> Author)         | GUID của Author        |
+| `tag_group`    | Nhóm chứa tag                               | `RelationshipObject` (Tag -> TagGroup)         | GUID của TagGroup      |
+| `cover_art`    | Ảnh bìa của manga                            | `RelationshipObject` (Manga -> CoverArt)       | `PublicId` (nếu từ list + include) hoặc GUID của CoverArt (nếu từ detail manga) |
+| `manga`        | Manga gốc                                   | `RelationshipObject` (Chapter/TranslatedManga/CoverArt -> Manga) | GUID của Manga |
+| `user`         | Người dùng tải lên                           | `RelationshipObject` (Chapter -> User)         | ID của User (int)     |
+| `chapter`      | Chương của manga                             | `RelationshipObject` (ChapterPage -> Chapter)  | GUID của Chapter       |
+| `translated_manga` | Bản dịch của manga                       | `RelationshipObject` (Chapter -> TranslatedManga) | GUID của TranslatedManga |
+*Lưu ý: `tag` không còn là relationship type của Manga, mà được nhúng vào `attributes`.*
 
-| Giá trị `type` | Mô tả                                       | Nơi xuất hiện                                  |
-|----------------|---------------------------------------------|------------------------------------------------|
-| `author`       | Tác giả của manga                            | `ResourceObject` (cho Author); `RelationshipObject` (Manga -> Author) |
-| `artist`       | Họa sĩ của manga                             | `RelationshipObject` (Manga -> Author)         |
-| `tag`          | Thẻ gắn với manga                            | `ResourceObject` (cho Tag); `RelationshipObject` (Manga -> Tag) |
-| `tag_group`    | Nhóm chứa tag                               | `ResourceObject` (cho TagGroup); `RelationshipObject` (Tag -> TagGroup) |
-| `cover_art`    | Ảnh bìa của manga                            | `ResourceObject` (cho CoverArt); `RelationshipObject` (Manga -> CoverArt) |
-| `manga`        | Manga gốc                                   | `ResourceObject` (cho Manga); `RelationshipObject` (Chapter/TranslatedManga/CoverArt -> Manga) |
-| `user`         | Người dùng tải lên                           | `ResourceObject` (cho User - nếu có API riêng cho User); `RelationshipObject` (Chapter -> User) |
-| `chapter`      | Chương của manga                             | `ResourceObject` (cho Chapter); `RelationshipObject` (ChapterPage -> Chapter) |
-| `chapter_page` | Trang của chương                             | `ResourceObject` (cho ChapterPage)             |
-| `translated_manga` | Bản dịch của manga                       | `ResourceObject` (cho TranslatedManga); `RelationshipObject` (Chapter -> TranslatedManga) |
-
-## 10. Các Endpoints Chính
+## 10. Các Endpoints Chính (Cập nhật cho Manga)
 
 ### Mangas
 
-- `GET /mangas`: Lấy danh sách manga
-- `GET /mangas/{id}`: Lấy thông tin chi tiết manga
+- `GET /mangas`: Lấy danh sách manga.
+    - **Hỗ trợ các tham số lọc `titleFilter`, `statusFilter`, `contentRatingFilter`, `demographicFilter[]`, `originalLanguageFilter`, `yearFilter`, `authorIdsFilter[]`, `includedTags[]`, `includedTagsMode`, `excludedTags[]`, `excludedTagsMode`.**
+    - **Hỗ trợ `includes[]` với các giá trị: `cover_art`, `author`, `artist`.**
+- `GET /mangas/{id}`: Lấy thông tin chi tiết manga.
+    - **Hỗ trợ `includes[]` với các giá trị: `author`, `artist`.**
+    - **Thông tin chi tiết Tags luôn được trả về trong `attributes.tags`.**
 - `POST /mangas`: Tạo manga mới (bao gồm cả tags và authors)
 - `PUT /mangas/{id}`: Cập nhật manga (bao gồm cả tags và authors)
 - `DELETE /mangas/{id}`: Xóa manga
@@ -341,4 +332,3 @@ Dưới đây là danh sách các giá trị `type` được sử dụng trong c
 - `POST /translatedmangas`: Tạo bản dịch mới
 - `PUT /translatedmangas/{id}`: Cập nhật bản dịch
 - `DELETE /translatedmangas/{id}`: Xóa bản dịch
-```

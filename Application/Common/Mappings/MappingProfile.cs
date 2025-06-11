@@ -47,6 +47,8 @@ namespace Application.Common.Mappings
             // Tag
             CreateMap<Tag, TagAttributesDto>()
                 .ForMember(dest => dest.TagGroupName, opt => opt.MapFrom(src => src.TagGroup != null ? src.TagGroup.Name : string.Empty));
+            CreateMap<Tag, TagInMangaAttributesDto>()
+                .ForMember(dest => dest.TagGroupName, opt => opt.MapFrom(src => src.TagGroup != null ? src.TagGroup.Name : string.Empty));
             CreateMap<CreateTagDto, Tag>(); // DTO to Entity
             CreateMap<UpdateTagDto, Tag>(); // DTO to Entity
             CreateMap<CreateTagCommand, Tag>(); // Command to Entity

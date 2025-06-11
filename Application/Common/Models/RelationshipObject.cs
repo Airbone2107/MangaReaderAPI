@@ -9,5 +9,9 @@ namespace Application.Common.Models
 
         [JsonPropertyOrder(2)]
         public string Type { get; set; } = string.Empty; // Loại của mối quan hệ hoặc vai trò, ví dụ "author", "artist", "cover_art"
+
+        [JsonPropertyOrder(3)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public object? Attributes { get; set; } // Thuộc tính chi tiết của thực thể liên quan (nếu được include)
     }
 } 
