@@ -1,261 +1,351 @@
-# TODO: Khắc phục lỗi "already being tracked" khi xóa Manga
+Chào bạn, tôi đã xem xét yêu cầu của bạn về việc cập nhật hai endpoint danh sách manga và chi tiết manga. Để đáp ứng yêu cầu, chúng ta cần thay đổi logic xử lý tham số `includes` trong các handler tương ứng.
 
-Lỗi "The instance of entity type 'TagGroup' cannot be tracked because another instance with the same key value for {'TagGroupId'} is already being tracked" xảy ra khi xóa Manga. Nguyên nhân là do truyền một entity không được theo dõi (loaded với `AsNoTracking()`) vào phương thức `DbSet.Remove()`, khiến EF Core cố gắng attach lại một graph object mà một phần của nó có thể đã được theo dõi từ trước.
+Dưới đây là mã nguồn đầy đủ cho các tệp đã được thay đổi.
 
-## Các bước thực hiện
+### 1. Cập nhật Handler cho Endpoint Chi tiết Manga
 
-### Bước 1: Cập nhật `DeleteMangaCommandHandler.cs`
+File này được cập nhật để khi `includes[]=cover_art` được truyền vào, nó sẽ trả về đầy đủ `attributes` của các ảnh bìa trong `relationships`. Logic cho `includes[]=author` đã hoạt động đúng, nhưng tôi sẽ đảm bảo nó nhất quán.
 
-Thay đổi cách `DeleteMangaCommandHandler` xử lý việc xóa Manga.
-1.  Sử dụng `GetMangaWithDetailsAsync` (vẫn giữ `AsNoTracking()` trong `MangaRepository`) để lấy thông tin cần thiết cho việc xóa các file liên quan trên Cloudinary.
-2.  Sau khi xóa file, gọi `_unitOfWork.MangaRepository.DeleteAsync(request.MangaId)` (phiên bản nhận `Guid`) để xóa Manga khỏi cơ sở dữ liệu. Phương thức này trong `GenericRepository` sẽ đảm bảo Manga được tải và theo dõi đúng cách trước khi xóa.
-
-**File cần thay đổi:** `Application\Features\Mangas\Commands\DeleteManga\DeleteMangaCommandHandler.cs`
-
-**Nội dung file đầy đủ sau khi thay đổi:**
-
+<!-- file path="Application\Features\Mangas\Queries\GetMangaById\GetMangaByIdQueryHandler.cs" -->
 ```csharp
-// Application\Features\Mangas\Commands\DeleteManga\DeleteMangaCommandHandler.cs
-using Application.Common.Interfaces; // Cho IPhotoAccessor
+using Application.Common.DTOs.Authors;
+using Application.Common.DTOs.CoverArts;
+using Application.Common.DTOs.Mangas;
+using Application.Common.DTOs.Tags;
+using Application.Common.Models;
 using Application.Contracts.Persistence;
-using Application.Exceptions;
+using AutoMapper;
+using Domain.Enums;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using System.Collections.Generic;
+using System.Linq;
 
-namespace Application.Features.Mangas.Commands.DeleteManga
+namespace Application.Features.Mangas.Queries.GetMangaById
 {
-    public class DeleteMangaCommandHandler : IRequestHandler<DeleteMangaCommand, Unit>
+    public class GetMangaByIdQueryHandler : IRequestHandler<GetMangaByIdQuery, ResourceObject<MangaAttributesDto>?>
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IPhotoAccessor _photoAccessor;
-        private readonly ILogger<DeleteMangaCommandHandler> _logger;
+        private readonly IMapper _mapper;
+        private readonly ILogger<GetMangaByIdQueryHandler> _logger;
 
-        public DeleteMangaCommandHandler(IUnitOfWork unitOfWork, IPhotoAccessor photoAccessor, ILogger<DeleteMangaCommandHandler> logger)
+        public GetMangaByIdQueryHandler(IUnitOfWork unitOfWork, IMapper mapper, ILogger<GetMangaByIdQueryHandler> logger)
         {
-            _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
-            _photoAccessor = photoAccessor ?? throw new ArgumentNullException(nameof(photoAccessor));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _unitOfWork = unitOfWork;
+            _mapper = mapper;
+            _logger = logger;
         }
 
-        public async Task<Unit> Handle(DeleteMangaCommand request, CancellationToken cancellationToken)
+        public async Task<ResourceObject<MangaAttributesDto>?> Handle(GetMangaByIdQuery request, CancellationToken cancellationToken)
         {
-            // Bước 1: Lấy thông tin chi tiết của manga (sử dụng instance không theo dõi cho việc đọc thông tin file)
-            // GetMangaWithDetailsAsync sử dụng AsNoTracking(), phù hợp để lấy dữ liệu mà không làm thay đổi context.
-            var mangaDetailsForFileSync = await _unitOfWork.MangaRepository.GetMangaWithDetailsAsync(request.MangaId);
+            _logger.LogInformation("GetMangaByIdQueryHandler.Handle - Lấy manga với ID: {MangaId}", request.MangaId);
+            
+            var manga = await _unitOfWork.MangaRepository.GetMangaWithDetailsAsync(request.MangaId);
 
-            if (mangaDetailsForFileSync == null)
+            if (manga == null)
             {
-                _logger.LogWarning("Manga with ID {MangaId} not found for deletion.", request.MangaId);
-                throw new NotFoundException(nameof(Domain.Entities.Manga), request.MangaId);
+                _logger.LogWarning("Không tìm thấy manga với ID: {MangaId}", request.MangaId);
+                return null;
             }
 
-            // Bước 2: Xóa các file liên quan trên Cloudinary (dựa trên mangaDetailsForFileSync)
-            // 2.1. Xóa ảnh bìa (CoverArts) khỏi Cloudinary
-            if (mangaDetailsForFileSync.CoverArts != null && mangaDetailsForFileSync.CoverArts.Any())
-            {
-                foreach (var coverArt in mangaDetailsForFileSync.CoverArts.ToList())
+            var mangaAttributes = _mapper.Map<MangaAttributesDto>(manga);
+            
+            mangaAttributes.Tags = manga.MangaTags
+                .Select(mt => new ResourceObject<TagInMangaAttributesDto>
                 {
-                    if (!string.IsNullOrEmpty(coverArt.PublicId))
-                    {
-                        var deletionResult = await _photoAccessor.DeletePhotoAsync(coverArt.PublicId);
-                        if (deletionResult != "ok" && deletionResult != "not found")
-                        {
-                            _logger.LogWarning("Failed to delete cover art {PublicId} from Cloudinary for manga {MangaId}. Result: {DeletionResult}", coverArt.PublicId, request.MangaId, deletionResult);
-                        }
-                    }
-                }
-            }
+                    Id = mt.Tag.TagId.ToString(),
+                    Type = "tag",
+                    Attributes = _mapper.Map<TagInMangaAttributesDto>(mt.Tag),
+                    Relationships = null
+                })
+                .ToList();
+            
+            var relationships = new List<RelationshipObject>();
 
-            // 2.2. Xóa các trang của chapter (ChapterPages) khỏi Cloudinary
-            if (mangaDetailsForFileSync.TranslatedMangas != null)
+            bool includeAuthorFull = request.Includes?.Contains("author", StringComparer.OrdinalIgnoreCase) ?? false;
+            bool includeCoverArt = request.Includes?.Contains("cover_art", StringComparer.OrdinalIgnoreCase) ?? false;
+
+            if (manga.MangaAuthors != null)
             {
-                foreach (var translatedManga in mangaDetailsForFileSync.TranslatedMangas.ToList())
+                foreach (var mangaAuthor in manga.MangaAuthors)
                 {
-                    // Cần lấy danh sách chapter thực tế từ DB, không phải từ mangaDetailsForFileSync.TranslatedMangas.Chapters
-                    // vì mangaDetailsForFileSync không track các chapters này.
-                    // Tuy nhiên, GetChaptersByTranslatedMangaAsync cũng có thể dùng AsNoTracking.
-                    // Để xóa ảnh, chúng ta cần thông tin ChapterPage.PublicId.
-                    // Cách đơn giản là lấy lại chapter với pages.
-                    var chaptersInDb = await _unitOfWork.ChapterRepository.GetChaptersByTranslatedMangaAsync(translatedManga.TranslatedMangaId);
-                    foreach (var chapterStub in chaptersInDb) // chapterStub từ GetChaptersByTranslatedMangaAsync có thể không có pages
+                    if (mangaAuthor.Author != null)
                     {
-                        // Lấy chapter với các trang của nó để xóa ảnh
-                        var chapterWithPages = await _unitOfWork.ChapterRepository.GetChapterWithPagesAsync(chapterStub.ChapterId);
-                        if (chapterWithPages?.ChapterPages != null && chapterWithPages.ChapterPages.Any())
+                        var relationshipType = mangaAuthor.Role == MangaStaffRole.Author ? "author" : "artist";
+                        
+                        relationships.Add(new RelationshipObject
                         {
-                            foreach (var page in chapterWithPages.ChapterPages.ToList())
-                            {
-                                if (!string.IsNullOrEmpty(page.PublicId))
-                                {
-                                    var deletionResult = await _photoAccessor.DeletePhotoAsync(page.PublicId);
-                                    if (deletionResult != "ok" && deletionResult != "not found")
-                                    {
-                                        _logger.LogWarning("Failed to delete chapter page {PublicId} from Cloudinary for chapter {ChapterId}. Result: {DeletionResult}", page.PublicId, chapterStub.ChapterId, deletionResult);
-                                    }
-                                }
-                            }
-                        }
+                            Id = mangaAuthor.Author.AuthorId.ToString(),
+                            Type = relationshipType,
+                            Attributes = includeAuthorFull 
+                                ? _mapper.Map<AuthorAttributesDto>(mangaAuthor.Author)
+                                : null
+                        });
                     }
                 }
             }
             
-            // Bước 3: Xóa Manga khỏi DB bằng Id.
-            // Phương thức DeleteAsync(Guid id) trong GenericRepository sẽ tìm entity bằng id (FindAsync sẽ track entity này)
-            // sau đó gọi Remove() trên entity đã được track, tránh lỗi "already being tracked".
-            // EF Core sẽ xử lý cascade delete cho các bảng liên kết như MangaTag, MangaAuthor, 
-            // và các entity phụ thuộc như TranslatedManga, Chapter, CoverArt (nếu được cấu hình Cascade trong DbContext).
-            await _unitOfWork.MangaRepository.DeleteAsync(request.MangaId);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-            _logger.LogInformation("Manga {MangaId} and its related data deleted successfully.", request.MangaId);
-            return Unit.Value;
-        }
-    }
-}
-```
-
-### Bước 2: Kiểm tra lại `GenericRepository.cs` (Không cần thay đổi)
-
-Đảm bảo rằng phương thức `GetByIdAsync` (hoặc `FindAsync` được sử dụng bên trong nó) không sử dụng `AsNoTracking()` để khi `DeleteAsync(Guid id)` gọi nó, entity trả về sẽ được `DbContext` theo dõi.
-
-**File (chỉ để tham khảo, không cần thay đổi):** `Persistence\Repositories\GenericRepository.cs`
-
-```csharp
-// Persistence\Repositories\GenericRepository.cs
-// ... các using ...
-namespace Persistence.Repositories
-{
-    public class GenericRepository<T> : IGenericRepository<T> where T : class
-    {
-        protected readonly ApplicationDbContext _context;
-        protected readonly DbSet<T> _dbSet;
-
-        public GenericRepository(ApplicationDbContext context)
-        {
-            _context = context ?? throw new ArgumentNullException(nameof(context));
-            _dbSet = _context.Set<T>();
-        }
-
-        // GetByIdAsync sử dụng FindAsync, mà FindAsync luôn theo dõi entity nếu tìm thấy.
-        public virtual async Task<T?> GetByIdAsync(Guid id)
-        {
-            return await _dbSet.FindAsync(id);
-        }
-
-        // ... các phương thức khác ...
-
-        public virtual async Task DeleteAsync(Guid id)
-        {
-            var entity = await GetByIdAsync(id); // Entity này sẽ được theo dõi nếu tìm thấy
-            if (entity != null)
+            if (manga.CoverArts != null && manga.CoverArts.Any())
             {
-                await DeleteAsync(entity); // Gọi DeleteAsync(T entity) với entity đã được theo dõi
+                foreach (var coverArt in manga.CoverArts)
+                {
+                    relationships.Add(new RelationshipObject
+                    {
+                        Id = coverArt.CoverId.ToString(),
+                        Type = "cover_art",
+                        Attributes = includeCoverArt
+                            ? _mapper.Map<CoverArtAttributesDto>(coverArt)
+                            : null
+                    });
+                }
             }
+            
+            var resourceObject = new ResourceObject<MangaAttributesDto>
+            {
+                Id = manga.MangaId.ToString(),
+                Type = "manga",
+                Attributes = mangaAttributes,
+                Relationships = relationships.Any() ? relationships : null
+            };
+            
+            return resourceObject;
         }
-        
-        public virtual Task DeleteAsync(T entity) // Phương thức này sẽ được gọi với entity đã được theo dõi
-        {
-            _dbSet.Remove(entity);
-            return Task.CompletedTask;
-        }
-        // ... các phương thức khác ...
     }
 }
 ```
 
-### Bước 3: Kiểm tra cấu hình Cascade Delete trong `ApplicationDbContext.cs`
+### 2. Cập nhật Handler cho Endpoint Danh sách Manga
 
-Đảm bảo rằng các mối quan hệ từ `Manga` đến các thực thể phụ thuộc (như `CoverArts`, `MangaAuthors`, `MangaTags`, `TranslatedMangas`) được cấu hình với `OnDelete(DeleteBehavior.Cascade)`. Điều này là cần thiết để khi `Manga` bị xóa, các dữ liệu liên quan này cũng tự động bị xóa.
+File này được cập nhật để:
+- Khi `includes[]=author`, trả về đầy đủ `attributes` của tác giả/họa sĩ.
+- Khi `includes[]=cover_art`:
+    - ID của relationship là `CoverId` (thay vì `PublicId` như trước).
+    - Trả về đầy đủ `attributes` của ảnh bìa (chỉ lấy ảnh bìa chính).
 
-**File (chỉ để tham khảo, giả định đã cấu hình đúng):** `Persistence\Data\ApplicationDbContext.cs`
-
+<!-- file path="Application\Features\Mangas\Queries\GetMangas\GetMangasQueryHandler.cs" -->
 ```csharp
-// Persistence\Data\ApplicationDbContext.cs
-// ... các using ...
-namespace Persistence.Data
+using Application.Common.DTOs;
+using Application.Common.DTOs.Authors;
+using Application.Common.DTOs.CoverArts;
+using Application.Common.DTOs.Mangas;
+using Application.Common.DTOs.Tags;
+using Application.Common.Extensions;
+using Application.Common.Models;
+using Application.Contracts.Persistence;
+using AutoMapper;
+using Domain.Entities;
+using Domain.Enums;
+using MediatR;
+using Microsoft.Extensions.Logging;
+using System.Linq;
+using System.Linq.Expressions;
+
+namespace Application.Features.Mangas.Queries.GetMangas
 {
-    public class ApplicationDbContext : DbContext, IApplicationDbContext
+    public class GetMangasQueryHandler : IRequestHandler<GetMangasQuery, PagedResult<ResourceObject<MangaAttributesDto>>>
     {
-        // ... DbSet properties ...
-        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
+        private readonly IUnitOfWork _unitOfWork;
+        private readonly IMapper _mapper;
+        private readonly ILogger<GetMangasQueryHandler> _logger;
 
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        public GetMangasQueryHandler(IUnitOfWork unitOfWork, IMapper mapper, ILogger<GetMangasQueryHandler> logger)
         {
-            base.OnModelCreating(modelBuilder);
+            _unitOfWork = unitOfWork;
+            _mapper = mapper;
+            _logger = logger;
+        }
 
-            // --- Manga ---
-            modelBuilder.Entity<Manga>(entity =>
+        public async Task<PagedResult<ResourceObject<MangaAttributesDto>>> Handle(GetMangasQuery request, CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("GetMangasQueryHandler.Handle called with request: {@GetMangasQuery}", request);
+
+            // Build filter predicate
+            Expression<Func<Manga, bool>> predicate = m => true; // Start with a true condition
+
+            if (!string.IsNullOrWhiteSpace(request.TitleFilter))
             {
-                // ... các cấu hình khác ...
+                // TODO: [Improvement] Use EF.Functions.Like or full-text search for more efficient/flexible text searching
+                predicate = predicate.And(m => m.Title.Contains(request.TitleFilter));
+            }
+            if (request.StatusFilter.HasValue)
+            {
+                predicate = predicate.And(m => m.Status == request.StatusFilter.Value);
+            }
+            if (request.ContentRatingFilter.HasValue)
+            {
+                predicate = predicate.And(m => m.ContentRating == request.ContentRatingFilter.Value);
+            }
+            
+            // Cập nhật logic cho PublicationDemographicsFilter
+            if (request.PublicationDemographicsFilter != null && request.PublicationDemographicsFilter.Any())
+            {
+                // Đảm bảo rằng PublicationDemographic của Manga không null trước khi kiểm tra Contains
+                predicate = predicate.And(m => m.PublicationDemographic.HasValue && request.PublicationDemographicsFilter.Contains(m.PublicationDemographic.Value));
+            }
 
-                entity.HasMany(m => m.TranslatedMangas) // Quan hệ Manga -> TranslatedManga
-                      .WithOne(tm => tm.Manga)
-                      .HasForeignKey(tm => tm.MangaId)
-                      .OnDelete(DeleteBehavior.Cascade); // Đảm bảo Cascade
+            if (!string.IsNullOrWhiteSpace(request.OriginalLanguageFilter))
+            {
+                predicate = predicate.And(m => m.OriginalLanguage == request.OriginalLanguageFilter);
+            }
+            if (request.YearFilter.HasValue)
+            {
+                predicate = predicate.And(m => m.Year == request.YearFilter.Value);
+            }
+            if (request.AuthorIdsFilter != null && request.AuthorIdsFilter.Any())
+            {
+                 // TODO: [Improvement] Consider filtering by specific role (Author/Artist) if MangaAuthorInputDto had Role
+                predicate = predicate.And(m => m.MangaAuthors.Any(ma => request.AuthorIdsFilter.Contains(ma.AuthorId)));
+            }
+            // TODO: [Improvement] Add filter for TranslatedManga.LanguageKey
+            // if (!string.IsNullOrWhiteSpace(request.LanguageFilter))
+            // {
+            //     predicate = predicate.And(m => m.TranslatedMangas.Any(tm => tm.LanguageKey == request.LanguageFilter));
+            // }
 
-                entity.HasMany(m => m.CoverArts)       // Quan hệ Manga -> CoverArt
-                      .WithOne(ca => ca.Manga)
-                      .HasForeignKey(ca => ca.MangaId)
-                      .OnDelete(DeleteBehavior.Cascade); // Đảm bảo Cascade
+            // --- Xử lý IncludedTags ---
+            if (request.IncludedTags != null && request.IncludedTags.Any())
+            {
+                // Mặc định là "AND" nếu không cung cấp hoặc rỗng
+                string includedMode = string.IsNullOrWhiteSpace(request.IncludedTagsMode) ? "AND" : request.IncludedTagsMode.ToUpper();
+
+                if (includedMode == "OR")
+                {
+                    _logger.LogInformation("Applying IncludedTags with OR mode. Tags: {Tags}", string.Join(",", request.IncludedTags));
+                    predicate = predicate.And(m => m.MangaTags.Any(mt => request.IncludedTags.Contains(mt.TagId)));
+                }
+                else // Mặc định là AND
+                {
+                    _logger.LogInformation("Applying IncludedTags with AND mode. Tags: {Tags}", string.Join(",", request.IncludedTags));
+                    // Manga phải chứa TẤT CẢ các tag trong request.IncludedTags
+                    // Tức là, với mỗi tagId trong request.IncludedTags, Manga phải có một MangaTag tương ứng.
+                    foreach (var tagId in request.IncludedTags)
+                    {
+                        predicate = predicate.And(m => m.MangaTags.Any(mt => mt.TagId == tagId));
+                    }
+                    // Cách viết khác cho AND mode:
+                    // predicate = predicate.And(m => request.IncludedTags.All(includedTagId => m.MangaTags.Any(mt => mt.TagId == includedTagId)));
+                }
+            }
+
+            // --- Xử lý ExcludedTags ---
+            if (request.ExcludedTags != null && request.ExcludedTags.Any())
+            {
+                // Mặc định là "OR" nếu không cung cấp hoặc rỗng
+                string excludedMode = string.IsNullOrWhiteSpace(request.ExcludedTagsMode) ? "OR" : request.ExcludedTagsMode.ToUpper();
+
+                if (excludedMode == "AND")
+                {
+                    _logger.LogInformation("Applying ExcludedTags with AND mode. Tags: {Tags}", string.Join(",", request.ExcludedTags));
+                    // Manga KHÔNG được chứa TẤT CẢ các tag trong request.ExcludedTags
+                    // Tức là, KHÔNG PHẢI (manga chứa TẤT CẢ các tag trong request.ExcludedTags)
+                    predicate = predicate.And(m => !request.ExcludedTags.All(excludedTagId => m.MangaTags.Any(mt => mt.TagId == excludedTagId)));
+                }
+                else // Mặc định là OR
+                {
+                    _logger.LogInformation("Applying ExcludedTags with OR mode. Tags: {Tags}", string.Join(",", request.ExcludedTags));
+                    // Manga KHÔNG được chứa BẤT KỲ tag nào trong request.ExcludedTags
+                    predicate = predicate.And(m => !m.MangaTags.Any(mt => request.ExcludedTags.Contains(mt.TagId)));
+                }
+            }
+
+
+            // Build OrderBy function
+            Func<IQueryable<Manga>, IOrderedQueryable<Manga>> orderBy;
+            switch (request.OrderBy?.ToLowerInvariant())
+            {
+                case "title":
+                    orderBy = q => request.Ascending ? q.OrderBy(m => m.Title) : q.OrderByDescending(m => m.Title);
+                    break;
+                case "year":
+                    orderBy = q => request.Ascending ? q.OrderBy(m => m.Year) : q.OrderByDescending(m => m.Year);
+                    break;
+                case "createdat":
+                    orderBy = q => request.Ascending ? q.OrderBy(m => m.CreatedAt) : q.OrderByDescending(m => m.CreatedAt);
+                    break;
+                case "updatedat":
+                default:
+                    orderBy = q => request.Ascending ? q.OrderBy(m => m.UpdatedAt) : q.OrderByDescending(m => m.UpdatedAt);
+                    break;
+            }
+            
+            // Luôn include các navigation properties cần thiết cho tất cả các trường hợp (cover, author, tag)
+            // CoverArts cũng cần cho Yêu cầu 1
+            var pagedMangas = await _unitOfWork.MangaRepository.GetPagedAsync(
+                request.Offset,
+                request.Limit,
+                predicate,
+                orderBy,
+                includeProperties: "MangaTags.Tag.TagGroup,MangaAuthors.Author,CoverArts"
+            );
+
+            var mangaResourceObjects = new List<ResourceObject<MangaAttributesDto>>();
+            bool includeCoverArt = request.Includes?.Contains("cover_art", StringComparer.OrdinalIgnoreCase) ?? false;
+            bool includeAuthorFull = request.Includes?.Contains("author", StringComparer.OrdinalIgnoreCase) ?? false;
+
+            foreach (var manga in pagedMangas.Items)
+            {
+                var mangaAttributes = _mapper.Map<MangaAttributesDto>(manga);
                 
-                // MangaAuthors và MangaTags thường là many-to-many join tables,
-                // EF Core sẽ tự động cấu hình cascade delete cho chúng khi Manga hoặc Author/Tag bị xóa.
-                // Tuy nhiên, bạn có thể chỉ định rõ ràng nếu muốn.
-            });
+                // Cập nhật cách populate Tags
+                mangaAttributes.Tags = manga.MangaTags
+                    .Select(mt => new ResourceObject<TagInMangaAttributesDto> // Sử dụng TagInMangaAttributesDto
+                    {
+                        Id = mt.Tag.TagId.ToString(),
+                        Type = "tag",
+                        Attributes = _mapper.Map<TagInMangaAttributesDto>(mt.Tag), // Map sang TagInMangaAttributesDto
+                        Relationships = null // Không có relationships cho tag khi nhúng trong manga
+                    })
+                    .ToList();
+
+                var relationships = new List<RelationshipObject>();
+
+                // Xử lý Authors/Artists
+                if (manga.MangaAuthors != null)
+                {
+                    foreach (var mangaAuthor in manga.MangaAuthors)
+                    {
+                        if (mangaAuthor.Author != null) 
+                        {
+                            var relationshipType = mangaAuthor.Role == MangaStaffRole.Author ? "author" : "artist";
+                            relationships.Add(new RelationshipObject
+                            {
+                                Id = mangaAuthor.Author.AuthorId.ToString(),
+                                Type = relationshipType,
+                                Attributes = includeAuthorFull 
+                                    ? _mapper.Map<AuthorAttributesDto>(mangaAuthor.Author)
+                                    : null
+                            });
+                        }
+                    }
+                }
+                
+                // Xử lý CoverArt (chỉ lấy cover chính)
+                var primaryCover = manga.CoverArts?.OrderByDescending(ca => ca.CreatedAt).FirstOrDefault(); 
+                if (primaryCover != null)
+                {
+                    relationships.Add(new RelationshipObject
+                    {
+                        Id = primaryCover.CoverId.ToString(), // ID là CoverId
+                        Type = "cover_art",
+                        Attributes = includeCoverArt
+                            ? _mapper.Map<CoverArtAttributesDto>(primaryCover) // Full DTO
+                            : null
+                    });
+                }
+
+                mangaResourceObjects.Add(new ResourceObject<MangaAttributesDto>
+                {
+                    Id = manga.MangaId.ToString(),
+                    Type = "manga",
+                    Attributes = mangaAttributes,
+                    Relationships = relationships.Any() ? relationships : null
+                });
+            }
             
-            // --- TranslatedManga ---
-            modelBuilder.Entity<TranslatedManga>(entity =>
-            {
-                // ...
-                entity.HasMany(tm => tm.Chapters)      // Quan hệ TranslatedManga -> Chapter
-                      .WithOne(c => c.TranslatedManga)
-                      .HasForeignKey(c => c.TranslatedMangaId)
-                      .OnDelete(DeleteBehavior.Cascade); // Đảm bảo Cascade
-            });
-
-            // --- Chapter ---
-            modelBuilder.Entity<Chapter>(entity =>
-            {
-                // ...
-                entity.HasMany(c => c.ChapterPages)    // Quan hệ Chapter -> ChapterPage
-                      .WithOne(cp => cp.Chapter)
-                      .HasForeignKey(cp => cp.ChapterId)
-                      .OnDelete(DeleteBehavior.Cascade); // Đảm bảo Cascade
-            });
-            
-            // ... các cấu hình khác cho MangaAuthor, MangaTag nếu cần ...
-            // Thông thường, cho bảng join many-to-many, khi một trong hai đầu bị xóa, bản ghi join sẽ bị xóa cascade.
-            // Ví dụ cho MangaTag:
-            modelBuilder.Entity<MangaTag>(entity =>
-            {
-                entity.HasKey(mt => new { mt.MangaId, mt.TagId });
-
-                entity.HasOne(mt => mt.Manga)
-                      .WithMany(m => m.MangaTags)
-                      .HasForeignKey(mt => mt.MangaId)
-                      .OnDelete(DeleteBehavior.Cascade); // Khi Manga xóa, MangaTag xóa
-
-                entity.HasOne(mt => mt.Tag)
-                      .WithMany(t => t.MangaTags)
-                      .HasForeignKey(mt => mt.TagId)
-                      .OnDelete(DeleteBehavior.Cascade); // Khi Tag xóa, MangaTag xóa
-            });
-            
-             modelBuilder.Entity<MangaAuthor>(entity =>
-            {
-                entity.HasKey(ma => new { ma.MangaId, ma.AuthorId, ma.Role });
-
-                entity.HasOne(ma => ma.Manga)
-                      .WithMany(m => m.MangaAuthors)
-                      .HasForeignKey(ma => ma.MangaId)
-                      .OnDelete(DeleteBehavior.Cascade);
-
-                entity.HasOne(ma => ma.Author)
-                      .WithMany(a => a.MangaAuthors)
-                      .HasForeignKey(ma => ma.AuthorId)
-                      .OnDelete(DeleteBehavior.Cascade);
-            });
+            return new PagedResult<ResourceObject<MangaAttributesDto>>(mangaResourceObjects, pagedMangas.Total, request.Offset, request.Limit);
         }
     }
 }
 ```
+
+Với những thay đổi trên, cả hai endpoint giờ đây sẽ hoạt động nhất quán với nhau khi xử lý `includes` cho `author` và `cover_art` theo đúng yêu cầu của bạn. Nếu có bất kỳ câu hỏi nào khác, đừng ngần ngại hỏi nhé

@@ -2,6 +2,7 @@ using Application.Common.DTOs;
 using Application.Common.DTOs.Mangas;
 using Application.Common.DTOs.Authors;
 using Application.Common.DTOs.Tags;
+using Application.Common.DTOs.CoverArts;
 using Application.Common.Extensions;
 using Application.Common.Models;
 using Application.Contracts.Persistence;
@@ -181,39 +182,30 @@ namespace Application.Features.Mangas.Queries.GetMangas
                         if (mangaAuthor.Author != null) 
                         {
                             var relationshipType = mangaAuthor.Role == MangaStaffRole.Author ? "author" : "artist";
-                            // Yêu cầu: Khi Include Author trong endpoint danh sách manga/chi tiết manga thì thật ra phải trả đầy đủ thông tin cho cả type author và type artist luôn.
-                            // Nghĩa là nếu `includes` chứa "author", thì cả "author" và "artist" đều được populate attributes.
-                            bool shouldIncludeAttributesForThisRelationship = includeAuthorFull;
-                            
                             relationships.Add(new RelationshipObject
                             {
                                 Id = mangaAuthor.Author.AuthorId.ToString(),
                                 Type = relationshipType,
-                                Attributes = shouldIncludeAttributesForThisRelationship 
-                                    ? new { 
-                                        mangaAuthor.Author.Name, 
-                                        mangaAuthor.Author.Biography 
-                                        // KHÔNG bao gồm CreatedAt, UpdatedAt
-                                      } 
+                                Attributes = includeAuthorFull 
+                                    ? _mapper.Map<AuthorAttributesDto>(mangaAuthor.Author)
                                     : null
                             });
                         }
                     }
                 }
                 
-                // Xử lý CoverArt
-                if (includeCoverArt)
+                // Xử lý CoverArt (chỉ lấy cover chính)
+                var primaryCover = manga.CoverArts?.OrderByDescending(ca => ca.CreatedAt).FirstOrDefault(); 
+                if (primaryCover != null)
                 {
-                    var primaryCover = manga.CoverArts?.OrderByDescending(ca => ca.CreatedAt).FirstOrDefault(); 
-                    if (primaryCover != null && !string.IsNullOrEmpty(primaryCover.PublicId))
+                    relationships.Add(new RelationshipObject
                     {
-                        relationships.Add(new RelationshipObject
-                        {
-                            Id = primaryCover.PublicId, // Sử dụng PublicId
-                            Type = "cover_art",
-                            Attributes = null // Không yêu cầu attributes cho cover trong danh sách manga
-                        });
-                    }
+                        Id = primaryCover.CoverId.ToString(), // ID là CoverId
+                        Type = "cover_art",
+                        Attributes = includeCoverArt
+                            ? _mapper.Map<CoverArtAttributesDto>(primaryCover) // Full DTO
+                            : null
+                    });
                 }
 
                 mangaResourceObjects.Add(new ResourceObject<MangaAttributesDto>

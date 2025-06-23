@@ -62,12 +62,15 @@ namespace MangaReaderDB.Controllers
             return Created(nameof(GetMangaById), new { id = mangaId }, mangaResource);
         }
 
+        // ---------- BẮT ĐẦU THAY ĐỔI TẠI ĐÂY ----------
         [HttpGet("{id:guid}")]
         [ProducesResponseType(typeof(ApiResponse<ResourceObject<MangaAttributesDto>>), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> GetMangaById(Guid id)
+        public async Task<IActionResult> GetMangaById([FromRoute] Guid id, [FromQuery] GetMangaByIdQuery query)
         {
-            var query = new GetMangaByIdQuery { MangaId = id };
+            // Gán ID từ route vào query object đã được binding từ query string
+            query.MangaId = id;
+
             var mangaResource = await Mediator.Send(query);
             if (mangaResource == null)
             {
@@ -75,6 +78,7 @@ namespace MangaReaderDB.Controllers
             }
             return Ok(mangaResource);
         }
+        // ---------- KẾT THÚC THAY ĐỔI ----------
 
         [HttpGet]
         [ProducesResponseType(typeof(ApiCollectionResponse<ResourceObject<MangaAttributesDto>>), StatusCodes.Status200OK)]
@@ -123,4 +127,4 @@ namespace MangaReaderDB.Controllers
             return NoContent();
         }
     }
-} 
+}

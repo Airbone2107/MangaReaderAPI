@@ -1,4 +1,5 @@
 using Application.Common.DTOs.Authors;
+using Application.Common.DTOs.CoverArts;
 using Application.Common.DTOs.Mangas;
 using Application.Common.DTOs.Tags;
 using Application.Common.Models;
@@ -52,6 +53,7 @@ namespace Application.Features.Mangas.Queries.GetMangaById
             var relationships = new List<RelationshipObject>();
 
             bool includeAuthorFull = request.Includes?.Contains("author", StringComparer.OrdinalIgnoreCase) ?? false;
+            bool includeCoverArt = request.Includes?.Contains("cover_art", StringComparer.OrdinalIgnoreCase) ?? false;
 
             if (manga.MangaAuthors != null)
             {
@@ -60,32 +62,32 @@ namespace Application.Features.Mangas.Queries.GetMangaById
                     if (mangaAuthor.Author != null)
                     {
                         var relationshipType = mangaAuthor.Role == MangaStaffRole.Author ? "author" : "artist";
-                        bool shouldIncludeAttributesForThisRelationship = includeAuthorFull;
                         
                         relationships.Add(new RelationshipObject
                         {
                             Id = mangaAuthor.Author.AuthorId.ToString(),
                             Type = relationshipType,
-                            Attributes = shouldIncludeAttributesForThisRelationship 
-                                ? new { 
-                                    mangaAuthor.Author.Name, 
-                                    mangaAuthor.Author.Biography
-                                  } 
+                            Attributes = includeAuthorFull 
+                                ? _mapper.Map<AuthorAttributesDto>(mangaAuthor.Author)
                                 : null
                         });
                     }
                 }
             }
             
-            var primaryCover = manga.CoverArts?.OrderByDescending(ca => ca.CreatedAt).FirstOrDefault(); 
-            if (primaryCover != null)
+            if (manga.CoverArts != null && manga.CoverArts.Any())
             {
-                relationships.Add(new RelationshipObject
+                foreach (var coverArt in manga.CoverArts)
                 {
-                    Id = primaryCover.CoverId.ToString(),
-                    Type = "cover_art",
-                    Attributes = null
-                });
+                    relationships.Add(new RelationshipObject
+                    {
+                        Id = coverArt.CoverId.ToString(),
+                        Type = "cover_art",
+                        Attributes = includeCoverArt
+                            ? _mapper.Map<CoverArtAttributesDto>(coverArt)
+                            : null
+                    });
+                }
             }
             
             var resourceObject = new ResourceObject<MangaAttributesDto>
