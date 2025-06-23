@@ -1,7 +1,3 @@
-Chắc chắn rồi! Dưới đây là một tệp tài liệu API mới, tập trung hoàn toàn vào các endpoint quản lý User và Role mà bạn vừa yêu cầu. Tệp này được viết theo phong cách của `MangaReaderAPI.md` nhưng chỉ chứa các thông tin liên quan đến quản lý người dùng.
-
-***
-
 # Hướng Dẫn API Quản Lý User & Role
 
 Tài liệu này tập trung vào các API endpoint dành cho việc quản lý Người dùng (Users), Vai trò (Roles), và Quyền hạn (Permissions) trong hệ thống MangaReader. Đây là tài liệu cốt lõi cho các nhà phát triển xây dựng trang quản trị (Admin Panel) hoặc các công cụ tương tác với hệ thống phân quyền của API.
@@ -137,7 +133,7 @@ Các endpoint này dùng để quản lý phiên đăng nhập.
     ```
 
 #### Ghi chú về `/api/auth/register`
-Endpoint `POST /api/auth/register` vẫn tồn tại nhưng **không dành cho mục đích sử dụng công khai**. Trong môi trường production, endpoint này nên được vô hiệu hóa hoặc bảo vệ nghiêm ngặt. Việc tạo người dùng mới phải được thực hiện bởi một quản trị viên thông qua `POST /api/users`.
+Endpoint `POST /api/auth/register` đã bị **loại bỏ** hoàn toàn. Việc tạo người dùng mới hiện được quản lý bởi các quản trị viên thông qua endpoint `POST /api/users`. Thay đổi này nhằm tăng cường bảo mật và đảm bảo chỉ những người có thẩm quyền mới có thể thêm người dùng vào hệ thống.
 
 ### 4.2. User Management (`/api/users`)
 
@@ -249,3 +245,4 @@ Các endpoint này yêu cầu xác thực và phân quyền.
     ```
 *   **Response (204 No Content):** Cập nhật thành công.
 *   **Lưu ý:** Bạn không thể chỉnh sửa vai trò `SuperAdmin`. API sẽ trả về lỗi nếu cố gắng làm vậy.
+```

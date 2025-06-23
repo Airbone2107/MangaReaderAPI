@@ -1,6 +1,7 @@
 ﻿// MangaReaderDB/Program.cs
 using Application.Common.Interfaces;
 using Application.Contracts.Persistence; // Thêm using cho IUnitOfWork và các IRepository
+using Domain.Constants; // <<< THÊM MỚI
 using Domain.Entities;
 using FluentValidation;
 using Infrastructure.Authentication;
@@ -14,6 +15,7 @@ using Microsoft.OpenApi.Models;
 using Persistence.Data;
 using Persistence.Data.Interceptors;
 using Persistence.Repositories; // Thêm using cho UnitOfWork và các Repository
+using System.Reflection; // <<< THÊM MỚI
 using System.Text;
 using System.Text.Json.Serialization; // Thêm using này
 
@@ -52,6 +54,12 @@ builder.Services.AddAutoMapper(typeof(Application.AssemblyReference).Assembly);
 
 // Đăng ký FluentValidation validators từ Application assembly
 builder.Services.AddValidatorsFromAssembly(typeof(Application.AssemblyReference).Assembly, ServiceLifetime.Scoped);
+
+// Đăng ký các Interface và Implementation cho DI
+// Đăng ký IApplicationDbContext để AuthController có thể sử dụng
+builder.Services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
+// Đăng ký ITokenService để AuthController có thể tạo token
+builder.Services.AddScoped<ITokenService, TokenService>();
 
 // Đăng ký UnitOfWork và Repositories
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -96,6 +104,24 @@ builder.Services.AddAuthentication(options => {
         ValidAudience = configuration["JwtSettings:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["JwtSettings:Key"]!))
     };
+});
+
+// Cấu hình Authorization với Policies
+builder.Services.AddAuthorization(options =>
+{
+    // Tự động tạo policies cho tất cả các permission
+    // Lấy tất cả các hằng số chuỗi public từ lớp lồng nhau trong Permissions
+    var permissions = typeof(Permissions)
+        .GetNestedTypes()
+        .SelectMany(type => type.GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy))
+        .Where(fi => fi.IsLiteral && !fi.IsInitOnly && fi.FieldType == typeof(string))
+        .Select(x => (string)x.GetRawConstantValue()!)
+        .ToList();
+
+    foreach (var permission in permissions)
+    {
+        options.AddPolicy(permission, policy => policy.RequireClaim("permission", permission));
+    }
 });
 
 // Các services khác của ASP.NET Core
@@ -173,7 +199,8 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
-        await Persistence.Data.SeedData.SeedAdminUserAsync(userManager);
+        var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>(); // <<< THÊM MỚI
+        await Persistence.Data.SeedData.SeedEssentialsAsync(userManager, roleManager); // <<< THAY ĐỔI TÊN HÀM
     }
     catch (Exception ex)
     {

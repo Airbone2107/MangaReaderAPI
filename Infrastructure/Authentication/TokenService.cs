@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading.Tasks;
 // <<< THAY ĐỔI: Sử dụng thư viện mới và hiệu năng hơn >>>
 using Microsoft.IdentityModel.JsonWebTokens;
+using System.Linq;
 
 namespace Infrastructure.Authentication
 {
@@ -17,14 +18,16 @@ namespace Infrastructure.Authentication
     {
         private readonly JwtSettings _jwtSettings;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly RoleManager<IdentityRole> _roleManager;
         private readonly SymmetricSecurityKey _key;
         // <<< THAY ĐỔI: Khai báo handler mới >>>
         private readonly JsonWebTokenHandler _tokenHandler;
 
-        public TokenService(IOptions<JwtSettings> jwtSettings, UserManager<ApplicationUser> userManager)
+        public TokenService(IOptions<JwtSettings> jwtSettings, UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager)
         {
             _jwtSettings = jwtSettings.Value;
             _userManager = userManager;
+            _roleManager = roleManager;
             _key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Key));
             // <<< THAY ĐỔI: Khởi tạo handler mới >>>
             _tokenHandler = new JsonWebTokenHandler();
@@ -45,10 +48,35 @@ namespace Infrastructure.Authentication
 
             // <<< THÊM MỚI: Lấy và thêm vai trò của người dùng vào token >>>
             // Điều này sẽ rất hữu ích cho việc phân quyền [Authorize(Roles = "Admin")] sau này
-            var roles = await _userManager.GetRolesAsync(user);
-            foreach (var role in roles)
+            var userRoles = await _userManager.GetRolesAsync(user);
+            foreach (var roleName in userRoles)
             {
-                claims.Add(new Claim(ClaimTypes.Role, role));
+                claims.Add(new Claim(ClaimTypes.Role, roleName));
+                
+                // <<< BẮT ĐẦU THÊM MỚI LOGIC LẤY PERMISSION >>>
+                var role = await _roleManager.FindByNameAsync(roleName);
+                if(role != null)
+                {
+                    var roleClaims = await _roleManager.GetClaimsAsync(role);
+                    foreach (var roleClaim in roleClaims)
+                    {
+                        // Đảm bảo không thêm claim trùng lặp
+                        if (!claims.Any(c => c.Type == roleClaim.Type && c.Value == roleClaim.Value))
+                        {
+                            claims.Add(roleClaim);
+                        }
+                    }
+                }
+                // <<< KẾT THÚC THÊM MỚI LOGIC LẤY PERMISSION >>>
+            }
+            // <<< THÊM MỚI: Lấy các claim được gán trực tiếp cho user >>>
+            var userClaims = await _userManager.GetClaimsAsync(user);
+            foreach (var userClaim in userClaims)
+            {
+                if (!claims.Any(c => c.Type == userClaim.Type && c.Value == userClaim.Value))
+                {
+                     claims.Add(userClaim);
+                }
             }
             // <<< KẾT THÚC THÊM MỚI >>>
 

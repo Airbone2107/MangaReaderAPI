@@ -1,42 +1,95 @@
+using Domain.Constants;
 using Domain.Entities;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.Logging;
-using System;
 using System.Linq;
+using System.Reflection;
+using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace Persistence.Data
 {
     public static class SeedData
     {
-        public static async Task SeedAdminUserAsync(UserManager<ApplicationUser> userManager)
+        public static async Task SeedEssentialsAsync(UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager)
         {
-            if (!userManager.Users.Any(u => u.UserName == "Admin"))
+            // Seed Roles
+            await SeedRolesAsync(roleManager);
+
+            // Seed SuperAdmin User
+            await SeedSuperAdminAsync(userManager, roleManager);
+        }
+
+        private static async Task SeedRolesAsync(RoleManager<IdentityRole> roleManager)
+        {
+            // Tạo các vai trò từ AppRoles constants
+            await CreateRoleIfNotExists(roleManager, AppRoles.SuperAdmin);
+            await CreateRoleIfNotExists(roleManager, AppRoles.Admin);
+            await CreateRoleIfNotExists(roleManager, AppRoles.Moderator);
+            await CreateRoleIfNotExists(roleManager, AppRoles.User);
+        }
+
+        private static async Task CreateRoleIfNotExists(RoleManager<IdentityRole> roleManager, string roleName)
+        {
+            if (!await roleManager.RoleExistsAsync(roleName))
             {
-                var adminUser = new ApplicationUser
-                {
-                    UserName = "Admin",
-                    Email = "nhat2004hcm@gmail.com",
-                    EmailConfirmed = true 
-                };
+                await roleManager.CreateAsync(new IdentityRole(roleName));
+            }
+        }
 
-                var result = await userManager.CreateAsync(adminUser, "123456");
+        private static async Task SeedSuperAdminAsync(UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager)
+        {
+            // Tạo user SuperAdmin mặc định
+            var defaultUser = new ApplicationUser 
+            { 
+                UserName = "superadmin", 
+                Email = "superadmin@mangareader.com", 
+                EmailConfirmed = true 
+            };
 
-                if (result.Succeeded)
+            if (userManager.Users.All(u => u.Id != defaultUser.Id))
+            {
+                var user = await userManager.FindByEmailAsync(defaultUser.Email);
+                if (user == null)
                 {
-                    // Thêm vai trò Admin trong tương lai
-                    // await userManager.AddToRoleAsync(adminUser, "Admin");
-                    Console.WriteLine("Admin user created successfully.");
-                }
-                else
-                {
-                     Console.WriteLine("Failed to create admin user:");
-                     foreach (var error in result.Errors)
-                     {
-                        Console.WriteLine($"- {error.Description}");
-                     }
+                    await userManager.CreateAsync(defaultUser, "123456");
+                    await userManager.AddToRoleAsync(defaultUser, AppRoles.SuperAdmin);
+                    await userManager.AddToRoleAsync(defaultUser, AppRoles.Admin);
+                    await userManager.AddToRoleAsync(defaultUser, AppRoles.Moderator);
+                    await userManager.AddToRoleAsync(defaultUser, AppRoles.User);
                 }
             }
+            
+            // Gán tất cả quyền cho vai trò SuperAdmin
+            await AddAllPermissionsToRole(roleManager, AppRoles.SuperAdmin);
+        }
+        
+        public static async Task AddAllPermissionsToRole(RoleManager<IdentityRole> roleManager, string roleName)
+        {
+            var role = await roleManager.FindByNameAsync(roleName);
+            if (role == null) return;
+            
+            var allClaims = await roleManager.GetClaimsAsync(role);
+            var allPermissions = GetAllPermissions();
+            
+            foreach (var permission in allPermissions)
+            {
+                if (!allClaims.Any(c => c.Type == "permission" && c.Value == permission))
+                {
+                    await roleManager.AddClaimAsync(role, new Claim("permission", permission));
+                }
+            }
+        }
+
+        private static List<string> GetAllPermissions()
+        {
+            var permissions = new List<string>();
+            var nestedTypes = typeof(Permissions).GetNestedTypes();
+            foreach (var type in nestedTypes)
+            {
+                var fields = type.GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
+                permissions.AddRange(fields.Select(fi => (string)fi.GetValue(null)!));
+            }
+            return permissions;
         }
     }
 } 

@@ -30,18 +30,6 @@ namespace MangaReaderDB.Controllers
             _logger = logger;
         }
 
-        [HttpPost("register")]
-        public async Task<IActionResult> Register([FromBody] RegisterDto registerDto)
-        {
-            var user = new ApplicationUser { UserName = registerDto.Username, Email = registerDto.Email };
-            var result = await _userManager.CreateAsync(user, registerDto.Password);
-            if (result.Succeeded)
-            {
-                return Ok(new AuthResponseDto { IsSuccess = true, Message = "User registered successfully!" });
-            }
-            return BadRequest(new AuthResponseDto { IsSuccess = false, Message = string.Join(" | ", result.Errors.Select(e => e.Description)) });
-        }
-
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginDto loginDto)
         {
