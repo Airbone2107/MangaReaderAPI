@@ -1,6 +1,7 @@
 ﻿using Application.Common.Interfaces;
 using Domain.Entities;
 using Domain.Enums;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
@@ -9,7 +10,7 @@ namespace Persistence.Data
     /// <summary>
     /// Database context chính của ứng dụng quản lý tất cả các entity
     /// </summary>
-    public class ApplicationDbContext : DbContext, IApplicationDbContext
+    public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplicationDbContext
     {
         /// <summary>
         /// Khởi tạo một instance mới của ApplicationDbContext
@@ -19,7 +20,7 @@ namespace Persistence.Data
         {
         }
 
-        public DbSet<User> Users { get; set; } = null!;
+        public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
         public DbSet<Author> Authors { get; set; } = null!;
         public DbSet<Tag> Tags { get; set; } = null!;
         public DbSet<TagGroup> TagGroups { get; set; } = null!;
@@ -43,11 +44,15 @@ namespace Persistence.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // --- User ---
-            modelBuilder.Entity<User>(entity =>
+            // Cấu hình RefreshToken
+            modelBuilder.Entity<RefreshToken>(entity =>
             {
-                entity.HasKey(e => e.UserId);
-                entity.HasIndex(u => u.Username).IsUnique();
+                entity.HasKey(rt => rt.Id);
+                entity.HasIndex(rt => rt.Token).IsUnique();
+                entity.Property(rt => rt.Token).IsRequired();
+                entity.HasOne(rt => rt.ApplicationUser)
+                      .WithMany(u => u.RefreshTokens)
+                      .HasForeignKey(rt => rt.ApplicationUserId);
             });
 
             // --- Author ---
@@ -115,7 +120,7 @@ namespace Persistence.Data
                 entity.HasOne(c => c.User)
                       .WithMany(u => u.Chapters)
                       .HasForeignKey(c => c.UploadedByUserId)
-                      .OnDelete(DeleteBehavior.Cascade);
+                      .OnDelete(DeleteBehavior.Restrict);
             });
 
             // --- ChapterPage ---

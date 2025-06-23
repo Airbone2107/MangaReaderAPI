@@ -42,8 +42,8 @@ namespace Application.Features.Chapters.Queries.GetChapterById
             {
                 relationships.Add(new RelationshipObject
                 {
-                    Id = chapter.User.UserId.ToString(),
-                    Type = "user" 
+                    Id = chapter.User.Id,
+                    Type = "user"
                 });
             }
             

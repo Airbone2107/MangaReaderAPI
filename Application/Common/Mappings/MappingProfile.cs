@@ -28,7 +28,7 @@ namespace Application.Common.Mappings
         public MappingProfile()
         {
             // User
-            CreateMap<User, UserAttributesDto>();
+            CreateMap<ApplicationUser, UserAttributesDto>();
 
             // Author
             CreateMap<Author, AuthorAttributesDto>();
@@ -55,7 +55,8 @@ namespace Application.Common.Mappings
             CreateMap<UpdateTagCommand, Tag>(); // Command to Entity (for updating existing entity)
 
             // Manga
-            CreateMap<Manga, MangaAttributesDto>();
+            CreateMap<Manga, MangaAttributesDto>()
+                .ForMember(dest => dest.AvailableTranslatedLanguages, opt => opt.Ignore()); // Bỏ qua trường này, sẽ xử lý thủ công
             CreateMap<CreateMangaDto, Manga>(); // DTO to Entity
             CreateMap<UpdateMangaDto, Manga>(); // DTO to Entity
             CreateMap<CreateMangaCommand, Manga>(); // Command to Entity

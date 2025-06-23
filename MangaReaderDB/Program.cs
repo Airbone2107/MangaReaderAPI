@@ -1,16 +1,24 @@
 ﻿// MangaReaderDB/Program.cs
 using Application.Common.Interfaces;
 using Application.Contracts.Persistence; // Thêm using cho IUnitOfWork và các IRepository
+using Domain.Entities;
 using FluentValidation;
+using Infrastructure.Authentication;
 using Infrastructure.Photos;
 using MangaReaderDB.Middleware; // Thêm using cho Middleware
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using Persistence.Data;
 using Persistence.Data.Interceptors;
 using Persistence.Repositories; // Thêm using cho UnitOfWork và các Repository
+using System.Text;
 using System.Text.Json.Serialization; // Thêm using này
 
 var builder = WebApplication.CreateBuilder(args);
+var configuration = builder.Configuration;
 
 // Đăng ký Interceptor như một Singleton
 builder.Services.AddSingleton<AuditableEntitySaveChangesInterceptor>();
@@ -19,7 +27,7 @@ builder.Services.AddSingleton<AuditableEntitySaveChangesInterceptor>();
 builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
 {
     var interceptor = serviceProvider.GetRequiredService<AuditableEntitySaveChangesInterceptor>();
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
+    options.UseSqlServer(configuration.GetConnectionString("DefaultConnection"),
                // Cấu hình Query Splitting Behavior
                sqlServerOptionsAction: sqlOptions =>
                {
@@ -30,7 +38,7 @@ builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =
 
 // Cấu hình CloudinarySettings
 // Đọc từ section "CloudinarySettings" trong appsettings.json
-builder.Services.Configure<CloudinarySettings>(builder.Configuration.GetSection("CloudinarySettings"));
+builder.Services.Configure<CloudinarySettings>(configuration.GetSection("CloudinarySettings"));
 
 // Đăng ký PhotoAccessor
 builder.Services.AddScoped<IPhotoAccessor, PhotoAccessor>();
@@ -56,6 +64,40 @@ builder.Services.AddScoped<ICoverArtRepository, CoverArtRepository>();
 builder.Services.AddScoped<ITranslatedMangaRepository, TranslatedMangaRepository>();
 // Không cần đăng ký IGenericRepository vì nó thường được sử dụng như một base class
 
+// Cấu hình đọc Settings
+builder.Services.Configure<JwtSettings>(configuration.GetSection("JwtSettings"));
+
+// Cấu hình Identity Core
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options => {
+    options.Password.RequireDigit = false;
+    options.Password.RequireLowercase = false;
+    options.Password.RequireNonAlphanumeric = false;
+    options.Password.RequireUppercase = false;
+    options.Password.RequiredLength = 6;
+    options.User.RequireUniqueEmail = true;
+})
+.AddEntityFrameworkStores<ApplicationDbContext>()
+.AddDefaultTokenProviders();
+
+// Cấu hình Authentication với JWT Bearer
+builder.Services.AddAuthentication(options => {
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = configuration["JwtSettings:Issuer"],
+        ValidAudience = configuration["JwtSettings:Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["JwtSettings:Key"]!))
+    };
+});
+
 // Các services khác của ASP.NET Core
 builder.Services.AddControllers()
     .AddJsonOptions(options => // THÊM KHỐI NÀY
@@ -67,7 +109,28 @@ builder.Services.AddControllers()
         // Các tùy chọn JsonSerializerOptions khác có thể được thêm vào đây nếu cần
     });
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+// Cấu hình Swagger để hỗ trợ JWT
+builder.Services.AddSwaggerGen(c => {
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme {
+        Description = "JWT Authorization header using the Bearer scheme. Example: \"Bearer {token}\"",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer"
+    });
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement {
+        {
+            new OpenApiSecurityScheme {
+                Reference = new OpenApiReference {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            new string[] {}
+        }
+    });
+});
 
 var app = builder.Build();
 
@@ -99,7 +162,24 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+// Gọi hàm Seed Data
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    try
+    {
+        var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
+        await Persistence.Data.SeedData.SeedAdminUserAsync(userManager);
+    }
+    catch (Exception ex)
+    {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "An error occurred during data seeding.");
+    }
+}
 
 app.Run();

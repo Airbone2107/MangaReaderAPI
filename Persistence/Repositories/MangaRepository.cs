@@ -21,6 +21,7 @@ namespace Persistence.Repositories
                     .ThenInclude(ma => ma.Author)
                 .Include(m => m.CoverArts)
                 .Include(m => m.TranslatedMangas)
+                    .ThenInclude(tm => tm.Chapters)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(m => m.MangaId == mangaId);
         }
@@ -37,6 +38,7 @@ namespace Persistence.Repositories
                     .ThenInclude(ma => ma.Author)
                 .Include(m => m.CoverArts)
                 .Include(m => m.TranslatedMangas)
+                    .ThenInclude(tm => tm.Chapters)
                 // KHÔNG sử dụng .AsNoTracking() ở đây
                 .FirstOrDefaultAsync(m => m.MangaId == mangaId);
         }

@@ -7,6 +7,7 @@ namespace Application.Common.DTOs.Mangas
     public class MangaAttributesDto
     {
         public string Title { get; set; } = string.Empty;
+        public List<string> AvailableTranslatedLanguages { get; set; } = new();
         public string OriginalLanguage { get; set; } = string.Empty;
         public PublicationDemographic? PublicationDemographic { get; set; }
         public MangaStatus Status { get; set; }

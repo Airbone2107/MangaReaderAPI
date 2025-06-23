@@ -81,7 +81,7 @@ namespace Application.Features.Chapters.Queries.GetChaptersByTranslatedManga
                 var relationships = new List<RelationshipObject>();
                 if (chapter.User != null)
                 {
-                    relationships.Add(new RelationshipObject { Id = chapter.User.UserId.ToString(), Type = "user" });
+                    relationships.Add(new RelationshipObject { Id = chapter.User.Id, Type = "user" });
                 }
                 if (chapter.TranslatedManga?.Manga != null)
                 {

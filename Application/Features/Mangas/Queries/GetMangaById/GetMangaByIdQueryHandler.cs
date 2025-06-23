@@ -50,6 +50,13 @@ namespace Application.Features.Mangas.Queries.GetMangaById
                 })
                 .ToList();
             
+            mangaAttributes.AvailableTranslatedLanguages = manga.TranslatedMangas
+                .Where(tm => tm.Chapters.Any())
+                .Select(tm => tm.LanguageKey.ToUpper())
+                .Distinct()
+                .OrderBy(lang => lang)
+                .ToList();
+            
             var relationships = new List<RelationshipObject>();
 
             bool includeAuthorFull = request.Includes?.Contains("author", StringComparer.OrdinalIgnoreCase) ?? false;

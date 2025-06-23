@@ -17,11 +17,22 @@ namespace Application.Features.Mangas.Queries.GetMangas
         public List<PublicationDemographic>? PublicationDemographicsFilter { get; set; }
         public string? OriginalLanguageFilter { get; set; }
         public int? YearFilter { get; set; }
-        public List<Guid>? AuthorIdsFilter { get; set; } // Lọc manga chứa BẤT KỲ author nào trong danh sách này
         
-        // TODO: [Improvement] Thêm bộ lọc cho TranslatedManga.LanguageKey? (Ví dụ: lấy manga có bản dịch tiếng Việt)
+        /// <summary>
+        /// Lọc manga theo ID tác giả (người viết truyện).
+        /// </summary>
+        public List<Guid>? Authors { get; set; }
+        
+        /// <summary>
+        /// Lọc manga theo ID họa sĩ.
+        /// </summary>
+        public List<Guid>? Artists { get; set; }
+        
+        /// <summary>
+        /// Lọc manga có bản dịch khả dụng trong các ngôn ngữ được chỉ định.
+        /// </summary>
+        public List<string>? AvailableTranslatedLanguage { get; set; }
 
-        // --- Các thuộc tính mới cho lọc tag nâng cao ---
         /// <summary>
         /// Danh sách các ID của tag mà manga PHẢI BAO GỒM.
         /// </summary>
@@ -47,7 +58,6 @@ namespace Application.Features.Mangas.Queries.GetMangas
         /// Mặc định là "OR".
         /// </summary>
         public string? ExcludedTagsMode { get; set; } // Mặc định "OR" trong Handler
-        // --- Kết thúc các thuộc tính mới ---
 
         public string OrderBy { get; set; } = "UpdatedAt"; // title, year, createdAt, updatedAt
         public bool Ascending { get; set; } = false; // Mặc định giảm dần cho UpdatedAt

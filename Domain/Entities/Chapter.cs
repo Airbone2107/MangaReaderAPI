@@ -29,12 +29,12 @@ namespace Domain.Entities
         /// <summary>
         /// ID của user đã đăng tải chương
         /// </summary>
-        public int UploadedByUserId { get; set; }
+        public string UploadedByUserId { get; set; } = string.Empty;
         
         /// <summary>
         /// Reference đến user đã đăng tải chương
         /// </summary>
-        public virtual User User { get; set; } = null!;
+        public virtual ApplicationUser User { get; set; } = null!;
 
         /// <summary>
         /// Số tập của chương (nếu có)

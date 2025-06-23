@@ -7,7 +7,7 @@ namespace Application.Common.Interfaces
 {
     public interface IApplicationDbContext
     {
-        DbSet<User> Users { get; }
+        DbSet<RefreshToken> RefreshTokens { get; }
         DbSet<Author> Authors { get; }
         DbSet<Tag> Tags { get; }
         DbSet<TagGroup> TagGroups { get; }
